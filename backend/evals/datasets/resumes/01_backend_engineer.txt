@@ -1,0 +1,20 @@
+Priya Sharma
+Pune, India | +91 98765 43210 | priya.sharma@example.com
+linkedin.com/in/priyasharma | github.com/priyasharma
+
+SUMMARY
+Backend engineer with 5 years of experience building payment and logistics systems.
+
+EXPERIENCE
+Senior Backend Engineer at Acme Systems | 2021 - Present
+- Built FastAPI services handling 2M requests per day.
+- Owned the PostgreSQL schema and migration pipeline.
+
+Backend Engineer at Blue Orbit | 2019 - 2021
+- Migrated a monolith to containerised services on AWS.
+
+SKILLS
+Python, FastAPI, PostgreSQL, Docker, AWS, Kubernetes, Redis
+
+EDUCATION
+B.Tech in Computer Science, Pune Institute of Technology, 2019

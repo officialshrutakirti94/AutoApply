@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   Solid colours are stored as RGB channel triples, not hex, so Tailwind can apply
+   opacity modifiers (`bg-bg/95`, `border-signal/40`). With hex values Tailwind
+   silently drops those classes and the surface renders transparent, which is how
+   the finish overlay ended up see-through.
+
+   The two rule colours are full-white with the alpha baked in, because they are
+   always used at their default weight.
+   --------------------------------------------------------------------------- */
+:root {
+  --bg: 8 8 11;
+  --surface: 16 16 20;
+  --surface-2: 22 22 27;
+  --ink: 244 244 246;
+  --ink-2: 166 166 178;
+  --ink-3: 111 111 124;
+  --signal: 232 64 42;
+  --signal-ink: 255 106 84; /* the accent at text size on a dark ground */
+  --moss: 63 191 127;
+  --ochre: 224 163 59;
+  --danger: 255 90 78;
+
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--ink));
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(232, 64, 42, 0.32);
+  color: #fff;
+}
+
+/* Focus is always visible and always the same colour. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--signal));
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@layer components {
+  .shell {
+    @apply mx-auto w-full max-w-shell px-5 sm:px-8;
+  }
+
+  /* Mono eyebrows: the template's small-caps label, made ours. */
+  .eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cell {
+    @apply rounded-cell border border-line bg-surface;
+  }
+
+  .link-underline {
+    @apply text-ink-2 underline decoration-line-strong underline-offset-4 transition-colors hover:text-ink hover:decoration-ink;
+  }
+}
+
+@layer utilities {
+  /* The signature: a vermilion sun on the horizon. Pure CSS, no image. */
+  .hero-sun {
+    position: absolute;
+    left: 50%;
+    bottom: -34%;
+    width: min(1100px, 150vw);
+    aspect-ratio: 1 / 1;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background:
+      radial-gradient(
+        circle at 50% 50%,
+        #ff5a3a 0%,
+        #e8402a 26%,
+        #9c2312 46%,
+        rgba(120, 26, 10, 0.35) 60%,
+        transparent 68%
+      );
+    filter: blur(1px);
+  }
+
+  .hero-floor {
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 46%;
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: linear-gradient(to bottom, transparent, black 55%, black);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 55%, black);
+    opacity: 0.55;
+  }
+
+  .hero-vignette {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(120% 80% at 50% 10%, transparent 30%, rgba(8, 8, 11, 0.65) 70%, rgb(var(--bg)) 92%);
+  }
+
+  .grain {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 3px 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

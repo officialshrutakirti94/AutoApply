@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autoapply-backend"
+version = "0.1.0"
+description = "AutoApply Agent backend: auth, resume parsing, run control, LangGraph agent."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.13",
+    "google-auth>=2.34",
+    "python-multipart>=0.0.9",
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "httpx>=0.27",
+    "structlog>=24.4",
+    "tenacity>=9.0",
+    "langgraph>=0.2.60",
+    "langchain-core>=0.3",
+    # Windows and slim containers have no system tz database; without this every
+    # timezone silently falls back to UTC and the quota window moves.
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+# Needed only when STORAGE_BACKEND=s3 (Supabase Storage in production).
+storage = ["boto3>=1.35"]
+pdf = ["pdfplumber>=0.11"]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "aiosqlite>=0.20",
+    "jsonschema>=4.23",
+    "ruff>=0.7",
+    "boto3>=1.35",
+    # moto[server] runs a real S3-speaking HTTP server for the storage tests.
+    "moto[server]>=5.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

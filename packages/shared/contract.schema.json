@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autoapply.local/contract.schema.json",
+  "title": "AutoApply extension <-> backend contract",
+  "description": "The only wire format between the extension and the backend. The backend owns decisions, the extension owns the page. The LLM only ever sees and emits element refs, never selectors or URLs.",
+  "$defs": {
+    "platform": {
+      "type": "string",
+      "enum": ["linkedin", "naukri"]
+    },
+    "pageType": {
+      "type": "string",
+      "enum": [
+        "search_results",
+        "job_detail",
+        "apply_form",
+        "chat_question",
+        "confirmation",
+        "external",
+        "unknown"
+      ]
+    },
+    "signal": {
+      "type": "string",
+      "enum": [
+        "captcha",
+        "checkpoint",
+        "warning_banner",
+        "forced_logout",
+        "rate_limited",
+        "unknown_page",
+        "suspicious_content"
+      ]
+    },
+    "elementKind": {
+      "type": "string",
+      "enum": ["text", "select", "radio", "checkbox", "file", "button"]
+    },
+    "ref": {
+      "type": "string",
+      "pattern": "^[a-z][0-9]{1,4}$",
+      "description": "Handle assigned by the extension for this observation only."
+    },
+    "actionType": {
+      "type": "string",
+      "enum": [
+        "fill_text",
+        "select_option",
+        "check",
+        "attach_resume",
+        "click",
+        "wait",
+        "submit",
+        "finish"
+      ]
+    },
+    "job": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "title": { "type": ["string", "null"], "maxLength": 300 },
+        "company": { "type": ["string", "null"], "maxLength": 200 },
+        "location": { "type": ["string", "null"], "maxLength": 200 },
+        "job_url": {
+          "type": ["string", "null"],
+          "maxLength": 2000,
+          "description": "Stored for the dashboard link. For off-platform jobs, use the company application URL when exposed; otherwise use the LinkedIn job URL. Never placed in a prompt."
+        },
+        "already_applied": { "type": "boolean", "default": false },
+        "external": { "type": "boolean", "default": false }
+      }
+    },
+    "element": {
+      "type": "object",
+      "required": ["ref", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": { "$ref": "#/$defs/ref" },
+        "kind": { "$ref": "#/$defs/elementKind" },
+        "label": { "type": "string", "maxLength": 400, "default": "" },
+        "options": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 300 },
+          "maxItems": 100,
+          "default": []
+        },
+        "required": { "type": "boolean", "default": false },
+        "value": { "type": ["string", "null"], "maxLength": 2000 }
+      }
+    },
+    "chat": {
+      "type": "object",
+      "required": ["question", "input_ref"],
+      "additionalProperties": false,
+      "properties": {
+        "question": { "type": "string", "maxLength": 2000 },
+        "input_ref": { "$ref": "#/$defs/ref" }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "required": ["run_id", "platform", "page_type", "job", "elements"],
+      "additionalProperties": false,
+      "properties": {
+        "run_id": { "type": "string", "format": "uuid" },
+        "platform": { "$ref": "#/$defs/platform" },
+        "page_type": { "$ref": "#/$defs/pageType" },
+        "job": { "$ref": "#/$defs/job" },
+        "elements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/element" },
+          "maxItems": 200
+        },
+        "chat": {
+          "oneOf": [{ "$ref": "#/$defs/chat" }, { "type": "null" }]
+        },
+        "page_text_digest": {
+          "type": ["string", "null"],
+          "maxLength": 4000,
+          "description": "Short excerpt used for fit checks and injection detection."
+        },
+        "signals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/signal" },
+          "maxItems": 10,
+          "default": []
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "$ref": "#/$defs/actionType" },
+        "ref": { "$ref": "#/$defs/ref" },
+        "value": { "type": ["string", "null"], "maxLength": 2000 },
+        "ms": { "type": "integer", "minimum": 100, "maximum": 30000 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "enum": ["fill_text", "select_option"] } } },
+          "then": { "required": ["ref", "value"] }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["check", "click", "attach_resume"] } } },
+          "then": { "required": ["ref"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "wait" } } },
+          "then": { "required": ["ms"] }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["submit", "finish"] } } },
+          "then": { "not": { "required": ["ref"] } }
+        }
+      ]
+    },
+    "agentResponse": {
+      "type": "object",
+      "required": ["actions", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/action" },
+          "maxItems": 10
+        },
+        "status": { "type": "string", "enum": ["continue", "done", "hitl", "stop"] },
+        "reason": { "type": ["string", "null"], "maxLength": 60 },
+        "meta": {
+          "type": ["object", "null"],
+          "additionalProperties": true,
+          "description": "Server-side counters for the extension UI (run counters, pacing). Presentation only: an action must never be derived from it."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "continue" } } },
+          "then": { "properties": { "actions": { "minItems": 1 } } }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["hitl", "stop"] } } },
+          "then": {
+            "required": ["reason"],
+            "properties": { "reason": { "type": "string", "minLength": 1 } }
+          }
+        }
+      ]
+    }
+  }
+}

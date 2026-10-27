@@ -1,0 +1,31 @@
+from app.api.routes import (
+    account,
+    agent,
+    applications,
+    auth,
+    extension,
+    files,
+    internal,
+    plan,
+    profile,
+    qa,
+    resume,
+    runs,
+    safety,
+)
+
+__all__ = [
+    "account",
+    "agent",
+    "applications",
+    "auth",
+    "extension",
+    "files",
+    "internal",
+    "plan",
+    "profile",
+    "qa",
+    "resume",
+    "runs",
+    "safety",
+]

@@ -1,0 +1,20 @@
+Neha Iyer
+Mumbai, India | +91 98200 11223 | neha.iyer@example.com
+linkedin.com/in/nehaiyer
+
+SUMMARY
+Data analyst with 6 years of experience across retail and fintech reporting.
+
+EXPERIENCE
+Senior Data Analyst at Finlytics | 2020 - Present
+- Built weekly revenue dashboards in Tableau for the leadership team.
+- Wrote SQL models covering 40+ source tables.
+
+Data Analyst at Retail Co | 2018 - 2020
+- Automated monthly reporting with Python and Pandas.
+
+SKILLS
+SQL, Tableau, Python, Pandas, Power BI, Excel, Data Analysis
+
+EDUCATION
+M.Sc in Statistics, University of Mumbai, 2018

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Google sign-in test — AutoApply</title>
+<style>
+  :root {
+    --ink: #14110d; --ink-2: #4a4238; --paper: #f6f2ea; --rule: #d9d1c2;
+    --signal: #d9401b; --moss: #3f6b46; --ochre: #8a5a12;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px 64px; background: var(--paper); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  p.lede { color: var(--ink-2); margin: 0 0 28px; }
+  section {
+    border-top: 1px solid var(--rule); padding: 22px 0 6px;
+  }
+  section:first-of-type { border-top: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2);
+       margin: 0 0 12px; font-weight: 600; }
+  label { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
+  input[type=text] {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--rule); border-radius: 2px;
+    background: #fff; font: 13px/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--ink);
+  }
+  input:focus-visible, button:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--signal); outline-offset: 2px;
+  }
+  button {
+    margin-top: 10px; padding: 9px 14px; border: 1px solid var(--ink); background: var(--ink);
+    color: var(--paper); border-radius: 2px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  button.quiet { background: transparent; color: var(--ink); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  #buttonSlot { min-height: 46px; margin: 4px 0 8px; }
+  textarea {
+    width: 100%; min-height: 96px; padding: 10px 11px; border: 1px solid var(--rule);
+    border-radius: 2px; background: #fff; font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+    color: var(--ink-2); resize: vertical;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td { padding: 5px 0; vertical-align: top; border-bottom: 1px solid var(--rule); }
+  td:first-child { width: 190px; color: var(--ink-2); font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  pre {
+    background: #fff; border: 1px solid var(--rule); border-radius: 2px; padding: 12px;
+    font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; overflow: auto; max-height: 320px;
+  }
+  .ok { color: var(--moss); font-weight: 600; }
+  .bad { color: var(--signal); font-weight: 600; }
+  .warn { color: var(--ochre); }
+  .hint { font-size: 13px; color: var(--ink-2); margin: 10px 0 0; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; background: #efe9de; padding: 1px 4px; border-radius: 2px; }
+  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .row > div { flex: 1 1 240px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Google sign-in test</h1>
+  <p class="lede">
+    Gets a real Google ID token so you can test <code>POST /api/auth/google</code>
+    before the dashboard exists. Diagnostic page only — nothing is stored anywhere.
+  </p>
+
+  <section>
+    <h2>1. Client ID</h2>
+    <label for="clientId">OAuth client ID (Web application)</label>
+    <input id="clientId" type="text" spellcheck="false"
+           placeholder="000000000000-xxxxxxxx.apps.googleusercontent.com">
+    <button id="save" class="quiet">Use this client ID</button>
+    <p class="hint">
+      This page must be served from an origin listed under
+      <strong>Authorised JavaScript origins</strong> for that client, for example
+      <code>http://localhost:5173</code>. It must be the same client ID the backend
+      has in <code>GOOGLE_CLIENT_ID</code>.
+    </p>
+  </section>
+
+  <section>
+    <h2>2. Sign in</h2>
+    <div id="buttonSlot"></div>
+    <p id="status" class="hint">Waiting for a client ID…</p>
+  </section>
+
+  <section>
+    <h2>3. Claims in the token (decoded, not verified)</h2>
+    <table id="claimsTable"><tbody></tbody></table>
+    <p class="hint" id="audCheck"></p>
+  </section>
+
+  <section>
+    <h2>4. The credential</h2>
+    <textarea id="credential" readonly placeholder="The ID token appears here after sign-in."></textarea>
+    <button id="copy" class="quiet">Copy</button>
+    <p class="hint">
+      Paste this into Swagger: <code>POST /api/auth/google</code> →
+      <code>{ "credential": "&lt;paste&gt;" }</code> → Execute.
+      That path keeps everything same-origin, so the session cookie is set for the API.
+    </p>
+  </section>
+
+  <section>
+    <h2>5. Or send it straight to the backend</h2>
+    <div class="row">
+      <div>
+        <label for="apiBase">API base URL</label>
+        <input id="apiBase" type="text" value="http://localhost:8000" spellcheck="false">
+      </div>
+      <div style="flex:0 0 auto"><button id="post">POST /api/auth/google</button></div>
+    </div>
+    <p class="hint">
+      Convenience only: this asks the browser to send the session cookie cross-origin.
+      The API allows it in development (<code>CORS_ORIGINS</code>). If the cookie does
+      not stick, use the Swagger route above — same request, no cross-origin involved.
+    </p>
+    <pre id="result">No request sent yet.</pre>
+  </section>
+</main>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const auth = { credential: null, claims: null };
+
+  // ---- client id persistence -------------------------------------------
+  const params = new URLSearchParams(location.search);
+  const fromQuery = params.get("client_id");
+  const stored = localStorage.getItem("autoapply.google.clientId");
+  if (fromQuery) localStorage.setItem("autoapply.google.clientId", fromQuery);
+  $("clientId").value = fromQuery || stored || "";
+
+  function decodeJwt(token) {
+    const part = token.split(".")[1];
+    const padded = part.replace(/-/g, "+").replace(/_/g, "/");
+    const json = decodeURIComponent(
+      atob(padded + "===".slice((padded.length + 3) % 4))
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(json);
+  }
+
+  function renderClaims(claims) {
+    const rows = [
+      ["iss", claims.iss],
+      ["aud", claims.aud],
+      ["email", claims.email],
+      ["email_verified", String(claims.email_verified)],
+      ["sub", claims.sub],
+      ["name", claims.name],
+      ["iat", new Date(claims.iat * 1000).toISOString()],
+      ["exp", new Date(claims.exp * 1000).toISOString()],
+      ["expires in", Math.round((claims.exp * 1000 - Date.now()) / 60000) + " min"],
+    ];
+    $("claimsTable").querySelector("tbody").innerHTML = rows
+      .map(([k, v]) => `<tr><td>${k}</td><td>${v ?? "<em>missing</em>"}</td></tr>`)
+      .join("");
+
+    const expected = $("clientId").value.trim();
+    const ok = expected && claims.aud === expected;
+    $("audCheck").innerHTML = ok
+      ? '<span class="ok">aud matches the client ID on this page.</span>'
+      : '<span class="bad">aud does NOT match the client ID on this page</span> — the backend will reject it with 401.';
+    if (claims.email_verified !== true) {
+      $("audCheck").innerHTML +=
+        ' <span class="warn">email_verified is false.</span>';
+    }
+  }
+
+  // ---- Google Identity Services ---------------------------------------
+  function init() {
+    const clientId = $("clientId").value.trim();
+    if (!clientId) return;
+
+    if (!window.google || !google.accounts || !google.accounts.id) {
+      $("status").textContent = "Could not load Google's script. Check your connection or an ad blocker.";
+      $("status").className = "bad";
+      return;
+    }
+
+    google.accounts.id.initialize({
+      client_id: clientId,
+      callback: (response) => {
+        auth.credential = response.credential;
+        auth.claims = decodeJwt(response.credential);
+        $("credential").value = response.credential;
+        renderClaims(auth.claims);
+        $("status").innerHTML =
+          '<span class="ok">Signed in.</span> Send the credential to the backend below.';
+        $("post").disabled = false;
+      },
+      auto_select: false,
+      cancel_on_tap_outside: true,
+    });
+
+    $("buttonSlot").innerHTML = "";
+    google.accounts.id.renderButton($("buttonSlot"), {
+      theme: "outline",
+      size: "large",
+      shape: "rectangular",
+      text: "continue_with",
+      logo_alignment: "left",
+      width: 300,
+    });
+
+    $("status").textContent = "Click the Google button above.";
+    $("status").className = "hint";
+  }
+
+  $("clientId").addEventListener("input", () => {
+    localStorage.setItem("autoapply.google.clientId", $("clientId").value.trim());
+  });
+
+  $("save").addEventListener("click", init);
+
+  // The GIS script is async; retry once it is available.
+  let tries = 0;
+  const waitForGoogle = setInterval(() => {
+    tries += 1;
+    if (window.google && google.accounts && google.accounts.id) {
+      clearInterval(waitForGoogle);
+      init();
+    } else if (tries > 40) {
+      clearInterval(waitForGoogle);
+      if ($("clientId").value.trim()) {
+        $("status").textContent = "Google's script did not load.";
+        $("status").className = "bad";
+      }
+    }
+  }, 250);
+
+  // ---- send to backend -------------------------------------------------
+  $("copy").addEventListener("click", async () => {
+    if (!auth.credential) return;
+    try {
+      await navigator.clipboard.writeText(auth.credential);
+      $("copy").textContent = "Copied";
+      setTimeout(() => ($("copy").textContent = "Copy"), 1500);
+    } catch (_) {
+      $("credential").select();
+    }
+  });
+
+  $("post").disabled = true;
+  $("post").addEventListener("click", async () => {
+    if (!auth.credential) return;
+    const base = $("apiBase").value.trim().replace(/\/$/, "");
+    $("result").textContent = "POSTing to " + base + "/api/auth/google …";
+    try {
+      const res = await fetch(base + "/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ credential: auth.credential }),
+      });
+      const text = await res.text();
+      let pretty = text;
+      try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (_) {}
+      $("result").innerHTML =
+        (res.ok ? '<span class="ok">' : '<span class="bad">') +
+        res.status + " " + res.statusText + "</span>\n\n" + pretty;
+    } catch (err) {
+      $("result").innerHTML =
+        '<span class="bad">Request failed</span>\n\n' + String(err) +
+        "\n\nIs the API running, and is this page's origin in CORS_ORIGINS?";
+    }
+  });
+})();
+</script>
+</body>
+</html>

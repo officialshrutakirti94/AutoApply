@@ -1,0 +1,16 @@
+Arjun Mehta
+Bengaluru, India | +91 90123 45678 | arjun.mehta@example.com
+
+SUMMARY
+Frontend developer with 3 years of experience shipping design systems and dashboards.
+
+EXPERIENCE
+Frontend Developer at Kite Labs | 2022 - Present
+- Rebuilt the analytics dashboard in React and TypeScript.
+- Cut bundle size by 40 percent with route level splitting.
+
+SKILLS
+React, TypeScript, JavaScript, HTML, CSS, Tailwind, Redux, Figma
+
+EDUCATION
+B.E. in Information Science, RV College of Engineering, 2022

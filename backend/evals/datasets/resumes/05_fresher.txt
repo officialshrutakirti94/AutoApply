@@ -1,0 +1,17 @@
+Ananya Rao
+Chennai, India | +91 90000 12345 | ananya.rao@example.com
+
+SUMMARY
+Recent computer science graduate looking for a first backend role. Comfortable with Python and SQL, and keen to learn distributed systems.
+
+PROJECTS
+Campus Library API
+- Built a REST API in Python with SQLite and wrote tests with pytest.
+Result Portal
+- Small SQL reporting tool used by two departments.
+
+SKILLS
+Python, SQL, Git, Linux, HTML, CSS
+
+EDUCATION
+B.Tech in Computer Science, Anna University, 2024

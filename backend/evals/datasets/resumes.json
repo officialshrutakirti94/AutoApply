@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "notes": [
+    "Synthetic resumes with the fields the heuristic parser must recover.",
+    "Synthetic on purpose: no real personal data is stored in this repository.",
+    "expected.* is what must be extracted; anything not listed is not asserted."
+  ],
+  "items": [
+    {
+      "file": "01_backend_engineer.txt",
+      "expected": {
+        "full_name": "Priya Sharma",
+        "email": "priya.sharma@example.com",
+        "years_of_experience": 5.0,
+        "location_contains": "pune",
+        "skills_include": ["python", "fastapi", "postgresql"],
+        "linkedin": true
+      }
+    },
+    {
+      "file": "02_frontend_developer.txt",
+      "expected": {
+        "full_name": "Arjun Mehta",
+        "email": "arjun.mehta@example.com",
+        "years_of_experience": 3.0,
+        "location_contains": "bengaluru",
+        "skills_include": ["react", "typescript"],
+        "linkedin": false
+      }
+    },
+    {
+      "file": "03_data_analyst.txt",
+      "expected": {
+        "full_name": "Neha Iyer",
+        "email": "neha.iyer@example.com",
+        "years_of_experience": 6.0,
+        "location_contains": "mumbai",
+        "skills_include": ["sql", "tableau", "python"],
+        "linkedin": true
+      }
+    },
+    {
+      "file": "04_devops_engineer.txt",
+      "expected": {
+        "full_name": "Rahul Verma",
+        "email": "rahul.verma@example.com",
+        "years_of_experience": 8.0,
+        "location_contains": "hyderabad",
+        "skills_include": ["kubernetes", "terraform", "aws"],
+        "linkedin": true
+      }
+    },
+    {
+      "file": "05_fresher.txt",
+      "expected": {
+        "full_name": "Ananya Rao",
+        "email": "ananya.rao@example.com",
+        "years_of_experience": null,
+        "location_contains": "chennai",
+        "skills_include": ["python", "sql"],
+        "linkedin": false
+      }
+    }
+  ]
+}
