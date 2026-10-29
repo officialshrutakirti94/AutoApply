@@ -51,7 +51,7 @@ async def test_captcha_stops_everything_and_starts_a_cooldown(onboarded, extensi
 
     retry = await onboarded.post(
         "/api/runs/start",
-        json={"platform": "linkedin", "dry_run": True},
+        json={"platform": "linkedin", "dry_run": False},
         headers=extension_headers(extension_token),
     )
     assert retry.status_code == 403
@@ -241,7 +241,7 @@ async def test_apply_form_is_filled_from_the_profile(onboarded, extension_token)
     assert result["status"] == "continue"
     values = {action["ref"]: action.get("value") for action in result["actions"]}
     assert values["f1"] == "Priya Sharma"
-    assert values["f2"] == "dev@example.com"
+    assert "f2" not in values, "LinkedIn's Email address field must be left unchanged"
     assert values["f3"] == "+91 98765 43210"
     assert values["f4"] == "18 LPA"
     assert values["f5"] == "2 months"
@@ -249,6 +249,124 @@ async def test_apply_form_is_filled_from_the_profile(onboarded, extension_token)
     types = [action["type"] for action in result["actions"]]
     assert types[-1] == "click"
     assert result["meta"]["llm_calls"] == 0
+
+
+async def test_prefilled_contact_info_advances_without_replacing_values(
+    onboarded, extension_token
+):
+    run = await start_run(onboarded, extension_token)
+    result = await agent_step(
+        onboarded,
+        extension_token,
+        observation(
+            run_id=run["id"],
+            page_type="apply_form",
+            elements=[
+                {
+                    "ref": "f1",
+                    "kind": "select",
+                    "label": "Email address",
+                    "options": ["dev@example.com"],
+                    "required": True,
+                    "value": "dev@example.com",
+                },
+                {
+                    "ref": "f2",
+                    "kind": "select",
+                    "label": "Phone country code",
+                    "options": ["India (+91)"],
+                    "required": True,
+                    "value": "India (+91)",
+                },
+                {
+                    "ref": "f3",
+                    "kind": "text",
+                    "label": "Mobile phone number",
+                    "required": True,
+                    "value": "+91 98765 43210",
+                },
+                button("b1", "Next"),
+            ],
+        ),
+    )
+
+    assert result["status"] == "continue"
+    assert result["actions"] == [{"type": "click", "ref": "b1"}]
+    assert result["meta"]["llm_calls"] == 0
+
+
+async def test_named_contact_fields_are_untouched_even_when_blank(onboarded, extension_token):
+    run = await start_run(onboarded, extension_token)
+    result = await agent_step(
+        onboarded,
+        extension_token,
+        observation(
+            run_id=run["id"],
+            page_type="apply_form",
+            elements=[
+                text_field("f1", "Email address*"),
+                {
+                    "ref": "f2",
+                    "kind": "select",
+                    "label": "Phone country code*",
+                    "options": ["India (+91)"],
+                    "required": True,
+                },
+                text_field("f3", "Mobile phone number*"),
+                button("b1", "Next"),
+            ],
+        ),
+    )
+
+    assert result["status"] == "continue"
+    assert result["actions"] == [{"type": "click", "ref": "b1"}]
+    assert result["meta"]["llm_calls"] == 0
+
+
+async def test_resume_file_is_left_untouched_and_other_required_documents_block(
+    onboarded, extension_token
+):
+    run = await start_run(onboarded, extension_token)
+    resume_result = await agent_step(
+        onboarded,
+        extension_token,
+        observation(
+            run_id=run["id"],
+            page_type="apply_form",
+            elements=[
+                {
+                    "ref": "f1",
+                    "kind": "file",
+                    "label": "Resume",
+                    "required": True,
+                },
+                button("b1", "Review"),
+            ],
+        ),
+    )
+    assert resume_result["status"] == "continue"
+    assert resume_result["actions"] == [{"type": "click", "ref": "b1"}]
+
+    document_result = await agent_step(
+        onboarded,
+        extension_token,
+        observation(
+            run_id=run["id"],
+            page_type="apply_form",
+            job={"id": "job-with-cover-letter"},
+            elements=[
+                {
+                    "ref": "f1",
+                    "kind": "file",
+                    "label": "Cover letter",
+                    "required": True,
+                },
+                button("b1", "Next"),
+            ],
+        ),
+    )
+    assert document_result["status"] == "hitl"
+    assert document_result["actions"] == []
 
 
 async def test_chat_question_is_answered_without_an_llm_call(onboarded, extension_token):
@@ -285,6 +403,16 @@ async def test_sensitive_question_needs_a_human(onboarded, extension_token):
     assert result["status"] == "hitl"
     assert result["reason"] == "sensitive_question"
     assert result["actions"] == []
+    assert result["meta"]["job_status"] == "needs_attention"
+
+    item = (await onboarded.get("/api/applications")).json()["items"][0]
+    assert item["answers_used"]["__needs_user_input__"] == [
+        {
+            "question": "Do you have any disability we should know about?",
+            "reason": "sensitive_question",
+            "sensitive": True,
+        }
+    ]
 
 
 async def test_unknown_question_needs_a_human(onboarded, extension_token):
@@ -303,24 +431,13 @@ async def test_unknown_question_needs_a_human(onboarded, extension_token):
     assert result["reason"] in {"unknown_question", "low_confidence"}
 
 
-async def test_dry_run_never_submits(onboarded, extension_token):
-    run = await start_run(onboarded, extension_token, dry_run=True)
-    result = await agent_step(
-        onboarded,
-        extension_token,
-        observation(
-            run_id=run["id"],
-            page_type="apply_form",
-            elements=[*FORM_FIELDS, button("b9", "Submit application")],
-        ),
+async def test_practice_run_cannot_be_started(onboarded, extension_token):
+    response = await onboarded.post(
+        "/api/runs/start",
+        json={"platform": "linkedin", "dry_run": True},
+        headers=extension_headers(extension_token),
     )
-
-    assert result["status"] == "done"
-    assert result["reason"] == "dry_run_complete"
-    assert all(action["type"] != "submit" for action in result["actions"])
-
-    apps = (await onboarded.get("/api/applications")).json()["items"]
-    assert apps[0]["status"] == "dry_run"
+    assert response.status_code == 422
 
 
 async def test_live_run_submits(onboarded, extension_token):
@@ -336,8 +453,17 @@ async def test_live_run_submits(onboarded, extension_token):
     )
 
     assert result["status"] == "continue"
-    assert result["actions"][-1] == {"type": "submit"}
+    assert result["actions"][-1] == {"type": "submit", "ref": "b9"}
 
+    apps = (await onboarded.get("/api/applications")).json()["items"]
+    assert apps == []
+
+    confirmed = await agent_step(
+        onboarded,
+        extension_token,
+        observation(run_id=run["id"], page_type="confirmation"),
+    )
+    assert confirmed["meta"]["job_status"] == "applied"
     apps = (await onboarded.get("/api/applications")).json()["items"]
     assert apps[0]["status"] == "applied"
 
@@ -396,13 +522,13 @@ async def test_unknown_ref_is_rejected_by_the_allow_list():
         validate_actions([Action(type="click", ref="z9")], typed)
 
 
-async def test_dry_run_strips_submit_even_if_a_node_asks_for_it():
+async def test_legacy_dry_run_guard_still_strips_submit():
     payload = observation(run_id=str(uuid.uuid4()), elements=[button("b1", "Submit")])
     typed = Observation.model_validate(payload)
 
     response = build_response(
         observation=typed,
-        actions=[submit()],
+        actions=[submit("b1")],
         status=StepStatus.CONTINUE,
         dry_run=True,
     )
@@ -425,4 +551,6 @@ def test_action_requires_fields_for_its_type():
     with pytest.raises(ValueError):
         Action(type="wait")
     with pytest.raises(ValueError):
-        Action(type="submit", ref="b1")
+        Action(type="submit")
+    with pytest.raises(ValueError):
+        Action(type="finish", ref="b1")

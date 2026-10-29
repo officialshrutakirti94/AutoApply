@@ -46,8 +46,8 @@ def wait(ms: int) -> Action:
     return Action(type=ActionType.WAIT, ms=ms)
 
 
-def submit() -> Action:
-    return Action(type=ActionType.SUBMIT)
+def submit(ref: str) -> Action:
+    return Action(type=ActionType.SUBMIT, ref=ref)
 
 
 def finish() -> Action:

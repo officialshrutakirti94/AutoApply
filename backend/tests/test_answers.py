@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-
 from app.agents import llm
 from app.core.config import settings
+from app.services import qa_bank
 from app.services.answers import (
     answer_question,
     detect_injection,
     detect_sensitive,
     fit_to_options,
 )
-from app.services import qa_bank
 from tests.helpers import make_preferences, make_profile, make_user
 
 
@@ -87,6 +86,37 @@ async def test_name_email_and_phone(db):
         await _ask(db, user, profile, preferences, "Email address")
     ).value == "priya.sharma@example.com"
     assert (await _ask(db, user, profile, preferences, "Mobile number")).value == "+91 98765 43210"
+
+
+async def test_phone_country_code_matches_the_profile_number_to_an_observed_option(db):
+    user, profile, preferences = await _context(db)
+    result = await _ask(
+        db,
+        user,
+        profile,
+        preferences,
+        "Phone country code",
+        options=["United States (+1)", "India (+91)", "Japan (+81)"],
+    )
+    assert result.value == "India (+91)"
+    assert result.source == "profile"
+
+
+async def test_user_approved_sensitive_answer_can_be_reused(db):
+    user, profile, preferences = await _context(db)
+    question = "Do you have a disability?"
+    await qa_bank.create_entry(
+        db,
+        user_id=user.id,
+        question=question,
+        answer="No",
+        sensitive=True,
+    )
+
+    result = await _ask(db, user, profile, preferences, question, options=["Yes", "No"])
+    assert result.resolved is True
+    assert result.value == "No"
+    assert result.source == "qa_bank"
 
 
 async def test_skill_specific_experience(db):

@@ -154,7 +154,12 @@ class Action(BaseModel):
     @model_validator(mode="after")
     def _check_required_fields(self) -> Action:
         needs_ref_value = {ActionType.FILL_TEXT, ActionType.SELECT_OPTION}
-        needs_ref = {ActionType.CHECK, ActionType.CLICK, ActionType.ATTACH_RESUME}
+        needs_ref = {
+            ActionType.CHECK,
+            ActionType.CLICK,
+            ActionType.ATTACH_RESUME,
+            ActionType.SUBMIT,
+        }
 
         if self.type in needs_ref_value:
             if not self.ref or self.value is None:
@@ -165,9 +170,8 @@ class Action(BaseModel):
         elif self.type is ActionType.WAIT:
             if self.ms is None:
                 raise ValueError("wait requires ms")
-        else:  # submit, finish
-            if self.ref is not None:
-                raise ValueError(f"{self.type} must not target a ref")
+        elif self.type is ActionType.FINISH and self.ref is not None:
+            raise ValueError(f"{self.type} must not target a ref")
         return self
 
 

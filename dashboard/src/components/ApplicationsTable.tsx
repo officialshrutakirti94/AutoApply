@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
 import type { Application } from "@/lib/api";
@@ -11,12 +12,14 @@ export function ApplicationsTable({
   onResolve,
   resolving,
   showCause = true,
+  onSaveAnswer,
 }: {
   items: Application[];
   empty: string;
   onResolve?: (id: string) => void;
   resolving?: boolean;
   showCause?: boolean;
+  onSaveAnswer?: (question: string, answer: string, sensitive: boolean) => Promise<void>;
 }) {
   if (!items.length) {
     return (
@@ -46,7 +49,7 @@ export function ApplicationsTable({
       {items.map((item) => (
         <div
           key={item.id}
-          className="flex flex-col gap-2 border-t border-line px-5 py-3 first:border-t-0 sm:flex-row sm:items-center sm:gap-4"
+          className="flex flex-col gap-2 border-t border-line px-5 py-3 first:border-t-0 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4"
         >
           <span className="w-12 shrink-0 font-mono text-[11px] tabular text-ink-3">
             {clock(item.created_at)}
@@ -90,6 +93,9 @@ export function ApplicationsTable({
               ) : null}
             </div>
           </div>
+          {onSaveAnswer ? (
+            <BlockedQuestionAnswers item={item} onSaveAnswer={onSaveAnswer} />
+          ) : null}
         </div>
       ))}
     </div>
@@ -155,11 +161,108 @@ export function WaitingTable({
               to="/app/profile"
               className="text-[12.5px] text-ink-3 transition-colors hover:text-ink"
             >
-              Add this answer to my profile
+              Update my profile
             </Link>
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function BlockedQuestionAnswers({
+  item,
+  onSaveAnswer,
+}: {
+  item: Application;
+  onSaveAnswer: (question: string, answer: string, sensitive: boolean) => Promise<void>;
+}) {
+  const raw = item.answers_used.__needs_user_input__;
+  if (!Array.isArray(raw)) return null;
+
+  const questions = raw.filter(
+    (entry): entry is { question: string; reason?: string; sensitive?: boolean } =>
+      typeof entry === "object" &&
+      entry !== null &&
+      typeof (entry as Record<string, unknown>).question === "string",
+  );
+  if (!questions.length) return null;
+
+  return (
+    <div className="w-full border-t border-line pt-3">
+      <p className="text-[12px] font-medium text-ink-2">What stopped this application</p>
+      <div className="mt-2 flex flex-col gap-3">
+        {questions.map((entry, index) => (
+          <BlockedQuestion
+            key={`${item.id}-${index}`}
+            question={entry.question}
+            sensitive={entry.sensitive === true || entry.reason === "sensitive_question"}
+            onSaveAnswer={onSaveAnswer}
+          />
+        ))}
+      </div>
+      <p className="mt-2 text-[11px] text-ink-3">
+        Saved answers are available for future applications. This blocked job will not be retried
+        automatically.
+      </p>
+    </div>
+  );
+}
+
+function BlockedQuestion({
+  question,
+  sensitive,
+  onSaveAnswer,
+}: {
+  question: string;
+  sensitive: boolean;
+  onSaveAnswer: (question: string, answer: string, sensitive: boolean) => Promise<void>;
+}) {
+  const [answer, setAnswer] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSaveAnswer(question, answer.trim(), sensitive);
+      setSaved(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save this answer.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-stamp bg-bg px-3 py-3">
+      <p className="text-[12px] text-ink">{question}</p>
+      {saved ? (
+        <p className="mt-2 text-[11.5px] text-ink-3">Saved for future applications.</p>
+      ) : (
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <textarea
+            value={answer}
+            onChange={(event) => setAnswer(event.target.value)}
+            rows={2}
+            maxLength={2000}
+            aria-label={`Your answer to ${question}`}
+            className="min-w-0 flex-1 resize-y rounded-stamp border border-line bg-surface px-2.5 py-2 text-[12px] text-ink outline-none focus:border-ink-3"
+            placeholder="Write the answer you want reused"
+          />
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving || !answer.trim()}
+            className="self-end rounded-stamp bg-ink px-3 py-2 text-[11.5px] font-medium text-bg disabled:opacity-50 sm:self-start"
+          >
+            {saving ? "Saving…" : "Save for future"}
+          </button>
+        </div>
+      )}
+      {error ? <p className="mt-2 text-[11.5px] text-danger">{error}</p> : null}
     </div>
   );
 }

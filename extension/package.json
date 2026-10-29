@@ -8,7 +8,7 @@
     "build": "wxt build",
     "zip": "wxt zip",
     "compile": "tsc --noEmit",
-    "test": "node --test src/lib/platforms.test.ts src/lib/job-queue.test.ts src/lib/run-status.test.ts src/platforms/observe.test.ts",
+    "test": "node --test src/lib/platforms.test.ts src/lib/job-queue.test.ts src/lib/run-status.test.ts src/lib/connection-state.test.ts src/platforms/observe.test.ts",
     "postinstall": "wxt prepare"
   },
   "dependencies": {

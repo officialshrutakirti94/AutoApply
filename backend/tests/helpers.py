@@ -149,7 +149,7 @@ B.Tech in Computer Science, Pune Institute of Technology, 2019
 
 
 async def start_run(
-    client: AsyncClient, token: str, *, platform: str = "linkedin", dry_run: bool = True
+    client: AsyncClient, token: str, *, platform: str = "linkedin", dry_run: bool = False
 ) -> dict:
     response = await client.post(
         "/api/runs/start",

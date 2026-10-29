@@ -78,8 +78,8 @@ export const api = {
     return request<void>("/platform/status", auth(token, { platform, signed_in: signedIn }));
   },
 
-  startRun(token: string, platform: string, dryRun: boolean): Promise<StartRunOut> {
-    return request<StartRunOut>("/runs/start", auth(token, { platform, dry_run: dryRun }));
+  startRun(token: string, platform: string): Promise<StartRunOut> {
+    return request<StartRunOut>("/runs/start", auth(token, { platform, dry_run: false }));
   },
 
   heartbeat(token: string, runId: string): Promise<HeartbeatOut> {

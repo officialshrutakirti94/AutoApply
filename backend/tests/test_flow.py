@@ -61,7 +61,7 @@ async def test_full_application_journey(onboarded, extension_token):
     )
     assert step["actions"][0]["ref"] == "b1"
 
-    # 3. first form step -> fill, then Next
+    # 3. first form step -> fill the name, preserve the contact email, then Next
     step = await agent_step(
         onboarded,
         extension_token,
@@ -70,13 +70,12 @@ async def test_full_application_journey(onboarded, extension_token):
             page_type="apply_form",
             elements=[
                 text_field("f1", "Full name"),
-                text_field("f2", "Email address"),
+                text_field("f2", "Email address*"),
                 button("b9", "Next"),
             ],
         ),
     )
     assert [action["type"] for action in step["actions"]] == [
-        "fill_text",
         "fill_text",
         "click",
     ]
@@ -94,8 +93,8 @@ async def test_full_application_journey(onboarded, extension_token):
             ],
         ),
     )
-    assert step["actions"][-1] == {"type": "submit"}
-    assert step["meta"]["job_status"] == "applied"
+    assert step["actions"][-1] == {"type": "submit", "ref": "b9"}
+    assert step["meta"]["job_status"] is None
 
     # 5. confirmation -> done
     step = await agent_step(
@@ -280,12 +279,13 @@ async def test_start_run_returns_the_search_plan(onboarded, extension_token):
     body = (
         await onboarded.post(
             "/api/runs/start",
-            json={"platform": "linkedin", "dry_run": True},
+            json={"platform": "linkedin", "dry_run": False},
             headers=extension_headers(extension_token),
         )
     ).json()
 
     search = body["search"]
+    assert body["run"]["dry_run"] is False
     assert search["roles"] == ["Backend Engineer", "Python Developer"]
     assert "Pune" in search["locations"]
     assert search["work_mode"] == ["remote", "hybrid"]
@@ -301,7 +301,7 @@ async def test_search_plan_is_empty_when_preferences_are(onboarded, extension_to
     body = (
         await onboarded.post(
             "/api/runs/start",
-            json={"platform": "linkedin", "dry_run": True},
+            json={"platform": "linkedin", "dry_run": False},
             headers=extension_headers(extension_token),
         )
     ).json()
@@ -326,7 +326,7 @@ async def test_a_stale_run_is_reclaimed_instead_of_blocking_forever(
 
     first = await onboarded.post(
         "/api/runs/start",
-        json={"platform": "linkedin", "dry_run": True},
+        json={"platform": "linkedin", "dry_run": False},
         headers=extension_headers(extension_token),
     )
     assert first.status_code == 200
@@ -344,7 +344,7 @@ async def test_a_stale_run_is_reclaimed_instead_of_blocking_forever(
 
     second = await onboarded.post(
         "/api/runs/start",
-        json={"platform": "linkedin", "dry_run": True},
+        json={"platform": "linkedin", "dry_run": False},
         headers=extension_headers(extension_token),
     )
     assert second.status_code == 200, second.text

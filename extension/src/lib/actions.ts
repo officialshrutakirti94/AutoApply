@@ -1,4 +1,5 @@
 import type { Action } from "./contract";
+import { closestLinkedInEasyApplyModal } from "@/platforms/linkedin-modal";
 
 /**
  * The hands. Executes an allow-listed action batch against the live page.
@@ -161,6 +162,7 @@ export async function runActions(
         input.files = transfer.files;
         input.dispatchEvent(new Event("input", { bubbles: true }));
         input.dispatchEvent(new Event("change", { bubbles: true }));
+        await sleep(400);
         break;
       }
 
@@ -185,10 +187,29 @@ export async function runActions(
       }
 
       case "submit": {
-        const button = findSubmitButton(document);
-        if (!button) return { ok: false, error: "No submit control on this page" };
-        button.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
-        button.click();
+        if (!(target instanceof HTMLElement)) {
+          return { ok: false, error: "submit without an observed control" };
+        }
+        const modal = closestLinkedInEasyApplyModal(target);
+        const label =
+          (target.textContent ?? "").replace(/\s+/g, " ").trim() ||
+          target.getAttribute("aria-label")?.trim() ||
+          "";
+        const hidden = target.getClientRects().length === 0;
+        if (
+          !modal ||
+          !target.matches("button, [role='button']") ||
+          hidden ||
+          target.getAttribute("aria-disabled") === "true" ||
+          (target instanceof HTMLButtonElement && target.disabled) ||
+          !/^\s*(submit|submit application|submit your application|send application|confirm and submit)\s*$/i.test(
+            label,
+          )
+        ) {
+          return { ok: false, error: "Observed control is not the final submit button" };
+        }
+        target.scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
+        target.click();
         submitted = true;
         break;
       }
@@ -230,23 +251,4 @@ function jobLink(element: Element): string | null {
   } catch {
     return null;
   }
-}
-
-function findSubmitButton(doc: Document): HTMLElement | null {
-  const scope =
-    doc.querySelector(".jobs-easy-apply-modal") ??
-    doc.querySelector(".chatbot_MessageContainer")?.parentElement ??
-    doc;
-  const buttons = Array.from(scope.querySelectorAll<HTMLElement>("button, [role='button']"));
-  return (
-    buttons.find((button) =>
-      /^\s*(submit|submit application|send application|confirm and submit|apply)\s*$/i.test(
-        (button.textContent ?? "").replace(/\s+/g, " "),
-      ),
-    ) ??
-    buttons.find((button) =>
-      /submit|apply/i.test((button.textContent ?? "").replace(/\s+/g, " ")),
-    ) ??
-    null
-  );
 }

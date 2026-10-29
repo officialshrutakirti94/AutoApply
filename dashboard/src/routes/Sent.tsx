@@ -14,8 +14,8 @@ export function Sent() {
             Everything it has sent
           </h1>
           <p className="mt-1.5 max-w-[58ch] text-[13px] leading-relaxed text-ink-3">
-            Submitted, with a timestamp and a link to the job. Practice runs are marked so
-            you never mistake one for a real application.
+            Platform-confirmed submissions, with timestamps and job links. Older test records
+            remain clearly labeled and are never mistaken for real applications.
           </p>
         </div>
         <Stamp tone="applied">{ledger.counts.sent}</Stamp>

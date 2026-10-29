@@ -332,7 +332,7 @@ async def test_the_daily_llm_budget_is_shared_across_runs(client_factory, db):
     await complete_onboarding(alice)
     token = await connect_extension(alice, install_id="llm-budget")
 
-    run = await start_run(alice, token, dry_run=True)
+    run = await start_run(alice, token, dry_run=False)
 
     from sqlalchemy import select
 
@@ -380,7 +380,7 @@ async def test_start_run_reports_the_remaining_allowance(onboarded, extension_to
     body = (
         await onboarded.post(
             "/api/runs/start",
-            json={"platform": "linkedin", "dry_run": True},
+            json={"platform": "linkedin", "dry_run": False},
             headers=extension_headers(extension_token),
         )
     ).json()

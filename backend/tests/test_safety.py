@@ -176,7 +176,7 @@ async def test_second_run_is_rejected(client_factory):
 
     response = await alice.post(
         "/api/runs/start",
-        json={"platform": "linkedin", "dry_run": True},
+        json={"platform": "linkedin", "dry_run": False},
         headers=extension_headers(token),
     )
     assert response.status_code in {403, 409}

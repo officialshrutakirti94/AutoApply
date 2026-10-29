@@ -276,9 +276,6 @@ export const api = {
   signInWithGoogle: (credential: string) =>
     request<Me>("/api/auth/google", { method: "POST", body: { credential } }),
 
-  devSignIn: (email?: string) =>
-    request<Me>("/api/auth/dev-login", { method: "POST", body: { email } }),
-
   profile: () => request<Profile>("/api/profile"),
 
   updateProfile: (patch: Partial<Profile> & { onboarding_step?: number }) =>

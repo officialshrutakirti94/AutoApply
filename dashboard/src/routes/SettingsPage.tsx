@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Download, Loader2, Plus, Unplug, X } from "lucide-react";
+import { Check, Copy, Loader2, Plus, Unplug, X } from "lucide-react";
 import {
   Button,
   Cell,
@@ -13,13 +13,12 @@ import {
 } from "@/components/ui/primitives";
 import { api, HttpError } from "@/lib/api";
 import { shortDate, until } from "@/lib/format";
+import { ExtensionDownloadButton } from "@/components/ExtensionDownloadButton";
 
 /**
  * Settings. The extension cannot sign in to Google, so it pairs with a code the
  * dashboard mints here: one code, one use, ten minutes.
  */
-
-const ZIP_URL = import.meta.env.VITE_EXTENSION_DOWNLOAD_URL;
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -345,7 +344,7 @@ export function SettingsPage() {
             <ol className="flex flex-col gap-3">
               {[
                 "Open chrome://extensions and turn on Developer mode.",
-                "Choose “Load unpacked” and pick the extension folder, or drop in the zip.",
+                "Download and extract the ZIP, then choose “Load unpacked” and select the extracted folder.",
                 "Open LinkedIn or Naukri, click the AutoApply icon, and paste the code.",
               ].map((step, index) => (
                 <li key={step} className="flex items-start gap-3 text-[13px] text-ink-2">
@@ -368,18 +367,7 @@ export function SettingsPage() {
                 ) : null}
                 {pairing ? "New code" : "Generate pairing code"}
               </Button>
-              {ZIP_URL ? (
-                <a href={ZIP_URL} target="_blank" rel="noreferrer">
-                  <Button variant="secondary">
-                    <Download size={14} strokeWidth={1.8} />
-                    Download extension
-                  </Button>
-                </a>
-              ) : (
-                <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-ink-3">
-                  Extension build coming soon
-                </span>
-              )}
+              <ExtensionDownloadButton />
             </div>
           </div>
         </Cell>

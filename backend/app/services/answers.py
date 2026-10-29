@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -181,6 +181,27 @@ def _education_degree(profile: Profile, _: Preference | None) -> str | None:
     return None
 
 
+def _phone_country_code(phone: str | None, options: list[str]) -> str | None:
+    if not phone or not phone.strip().startswith("+"):
+        return None
+
+    number = re.sub(r"\D", "", phone)
+    if not number:
+        return None
+
+    matches: list[tuple[int, str]] = []
+    for option in options:
+        match = re.search(r"\(\s*\+(\d{1,4})\s*\)", option)
+        if match and number.startswith(match.group(1)):
+            matches.append((len(match.group(1)), option))
+    if not matches:
+        return None
+
+    longest = max(length for length, _ in matches)
+    best = [option for length, option in matches if length == longest]
+    return best[0] if len(best) == 1 else None
+
+
 # Order matters: specific patterns before general ones.
 PROFILE_RULES: tuple[ProfileRule, ...] = (
     ProfileRule("expected_ctc", re.compile(r"\b(expected|desired|looking for)\b.{0,20}\b(ctc|salary|compensation|pay)", re.I), lambda p, _: _lpa(p.expected_ctc_lpa)),
@@ -343,6 +364,15 @@ async def answer_question(
 
     sensitive_label = detect_sensitive(cleaned)
     if sensitive_label is not None:
+        saved = await qa_bank.find_entry(db, user_id=user_id, question=cleaned)
+        if saved is not None and saved.approved and saved.sensitive and saved.answer:
+            await qa_bank.mark_used(db, saved)
+            return AnswerResult(
+                fit_to_options(saved.answer, options),
+                "qa_bank",
+                QA_CONFIDENCE,
+                qa_entry_id=saved.id,
+            )
         return AnswerResult(
             None,
             "none",
@@ -352,6 +382,16 @@ async def answer_question(
         )
 
     if profile is None:
+        return AnswerResult(None, "none", 0.0, reason=ApplicationReason.UNKNOWN_QUESTION.value)
+
+    if re.search(
+        r"\b(phone|mobile|dial(?:ing|ling))\s+country\s+code\b",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        country_code = _phone_country_code(profile.phone, options)
+        if country_code:
+            return AnswerResult(country_code, "profile", PROFILE_CONFIDENCE)
         return AnswerResult(None, "none", 0.0, reason=ApplicationReason.UNKNOWN_QUESTION.value)
 
     skill_years = _skill_specific_years(cleaned, profile)

@@ -10,6 +10,7 @@ import {
   Stamp,
   Stat,
 } from "@/components/ui/primitives";
+import { ExtensionDownloadButton } from "@/components/ExtensionDownloadButton";
 import { api } from "@/lib/api";
 import { clock, until } from "@/lib/format";
 import { useMe } from "@/hooks/useMe";
@@ -96,18 +97,17 @@ export function Overview() {
             ) : (
               <>
                 <p className="max-w-[46ch] text-[14px] leading-relaxed text-ink-2">
-                  Nothing is running. Open LinkedIn or Naukri in a tab, press{" "}
-                  <span className="text-ink">Start Magic</span>, and every application lands
-                  in the sections on the left.
+                  Get the Chrome extension, install it, then connect it from Settings to start
+                  applying on LinkedIn or Naukri.
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button variant="secondary" size="sm" disabled>
-                    Start on LinkedIn
-                  </Button>
-                  <Button variant="secondary" size="sm" disabled>
-                    Start on Naukri
-                  </Button>
-                  <Stamp tone="signal">Extension coming soon</Stamp>
+                  <ExtensionDownloadButton compact />
+                  <Link
+                    to="/app/settings"
+                    className="text-[12.5px] text-ink-2 underline underline-offset-4 hover:text-ink"
+                  >
+                    Pair extension
+                  </Link>
                 </div>
               </>
             )}

@@ -260,7 +260,7 @@ class ResumeFileOut(BaseModel):
 
 class StartRunRequest(BaseModel):
     platform: PlatformLiteral
-    dry_run: bool = True
+    dry_run: Literal[False] = False
 
 
 class RunOut(BaseModel):

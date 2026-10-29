@@ -22,9 +22,8 @@ export function Waiting() {
             It needs your answer
           </h1>
           <p className="mt-1.5 max-w-[62ch] text-[13px] leading-relaxed text-ink-3">
-            The agent stopped at a question it will not answer on your behalf — anything
-            sensitive, or anything it could not ground in your profile. Answer it and the
-            application can go out.
+            Required questions that need your input now appear in Can&rsquo;t send with an option
+            to save your answer for future applications.
           </p>
         </div>
         <Stamp tone="attention">{ledger.counts.waiting}</Stamp>

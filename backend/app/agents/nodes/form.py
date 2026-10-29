@@ -12,8 +12,22 @@ import re
 
 from app.agents.context import StepContext
 from app.agents.state import AgentState
-from app.agents.tools import attach_resume, check, click, fill_text, select_option, submit
-from app.contract.models import Action, ElementKind, Observation, StepStatus
+from app.agents.tools import (
+    attach_resume,
+    check,
+    click,
+    fill_text,
+    select_option,
+    submit,
+)
+from app.contract.models import (
+    MAX_ACTIONS_PER_STEP,
+    Action,
+    ElementKind,
+    Observation,
+    Platform,
+    StepStatus,
+)
 from app.db.enums import ApplicationReason, ApplicationStatus
 from app.services.answers import AnswerResult, answer_question, detect_sensitive
 
@@ -22,11 +36,11 @@ ROUTE_HITL = "hitl"
 ROUTE_DONE = "done"
 
 _SUBMIT_LABEL = re.compile(
-    r"^\s*(submit|submit\s+application|send\s+application|confirm\s+and\s+submit|finish|apply)\s*$",
+    r"^\s*(submit|submit\s+application|submit\s+your\s+application|send\s+application|confirm\s+and\s+submit)\s*$",
     re.IGNORECASE,
 )
 _NEXT_LABEL = re.compile(
-    r"^\s*(next|continue|save\s*(&|and)\s*continue|review|review\s+application|proceed|save)\s*$",
+    r"^\s*(next|next\s+step|continue|continue\s+to\s+next\s+step|save\s*(&|and)\s*continue|review|review\s+application|proceed|save)\s*$",
     re.IGNORECASE,
 )
 _CONSENT_LABEL = re.compile(
@@ -34,6 +48,12 @@ _CONSENT_LABEL = re.compile(
     re.IGNORECASE,
 )
 _AFFIRMATIVE = {"yes", "y", "true", "1", "i agree", "agree", "confirmed", "ok"}
+_RESUME_LABEL = re.compile(r"\b(resume|curriculum\s+vitae|cv)\b", re.IGNORECASE)
+_PRESERVED_CONTACT_FIELDS = (
+    re.compile(r"^\s*email\s+address\s*\*?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*phone\s+country\s+code\s*\*?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*mobile\s+phone\s+number\s*\*?\s*$", re.IGNORECASE),
+)
 
 _SEVERITY = {
     ApplicationReason.SENSITIVE_QUESTION.value: 0,
@@ -56,6 +76,10 @@ def _action_for(kind: ElementKind, ref: str, value: str) -> Action | None:
     if kind is ElementKind.FILE:
         return attach_resume(ref)
     return None
+
+
+def _is_preserved_contact_field(label: str) -> bool:
+    return any(pattern.fullmatch(label) for pattern in _PRESERVED_CONTACT_FIELDS)
 
 
 def _pick_worst(unresolved: list[tuple[str, AnswerResult]]) -> AnswerResult:
@@ -92,7 +116,31 @@ async def handle_form(state: AgentState, ctx: StepContext) -> dict:
         )
 
     for element in observation.elements:
-        if element.kind in {ElementKind.BUTTON, ElementKind.FILE}:
+        if element.kind is ElementKind.BUTTON:
+            continue
+        if (
+            observation.platform is Platform.LINKEDIN
+            and _is_preserved_contact_field(element.label)
+        ):
+            continue
+        if element.kind is ElementKind.FILE:
+            if observation.platform is not Platform.LINKEDIN:
+                continue
+            if element.value or not element.required:
+                continue
+            if _RESUME_LABEL.search(element.label):
+                continue
+            unresolved.append(
+                (
+                    element.label or "Required document upload",
+                    AnswerResult(
+                        value=None,
+                        source="none",
+                        confidence=0.0,
+                        reason=ApplicationReason.UNKNOWN_QUESTION.value,
+                    ),
+                )
+            )
             continue
         if element.value:
             continue
@@ -101,7 +149,12 @@ async def handle_form(state: AgentState, ctx: StepContext) -> dict:
         pending.append((element.ref, element.label, list(element.options), element.kind, element.required))
 
     for element in observation.elements:
-        if element.kind is ElementKind.FILE and not element.value:
+        if (
+            element.kind is ElementKind.FILE
+            and not element.value
+            and observation.platform is not Platform.LINKEDIN
+            and len(actions) < MAX_ACTIONS_PER_STEP
+        ):
             actions.append(attach_resume(element.ref))
 
     for ref, label, options, kind, required in pending:
@@ -114,7 +167,7 @@ async def handle_form(state: AgentState, ctx: StepContext) -> dict:
         cached = answered_by_question.get(label)
         if cached is not None:
             action = _action_for(kind, ref, cached.value or "") if cached.resolved else None
-            if action is not None:
+            if action is not None and len(actions) < MAX_ACTIONS_PER_STEP:
                 actions.append(action)
             continue
 
@@ -143,14 +196,22 @@ async def handle_form(state: AgentState, ctx: StepContext) -> dict:
             continue
 
         action = _action_for(kind, ref, result.value or "")
-        if action is not None:
+        if action is not None and len(actions) < MAX_ACTIONS_PER_STEP:
             actions.append(action)
             answers_used[label] = result.value or ""
 
     if unresolved:
         worst = _pick_worst(unresolved)
         reason = worst.reason or ApplicationReason.UNKNOWN_QUESTION.value
-        missing = [label for label, _ in unresolved][:5]
+        missing_details = [
+            {
+                "question": label,
+                "reason": result.reason or ApplicationReason.UNKNOWN_QUESTION.value,
+                "sensitive": result.sensitive,
+            }
+            for label, result in unresolved[:5]
+        ]
+        missing = [item["question"] for item in missing_details]
         return {
             "route": ROUTE_HITL,
             "status": StepStatus.HITL.value,
@@ -158,7 +219,7 @@ async def handle_form(state: AgentState, ctx: StepContext) -> dict:
             "job_status": ApplicationStatus.NEEDS_ATTENTION.value,
             "job_reason": reason,
             "actions": [],
-            "answers_used": answers_used,
+            "answers_used": {**answers_used, "__needs_user_input__": missing_details},
             "llm_calls": llm_calls,
             "notes": [*notes, f"hitl:{reason}", *missing],
         }
@@ -170,6 +231,16 @@ async def handle_form(state: AgentState, ctx: StepContext) -> dict:
     next_button = next((element for element in buttons if _NEXT_LABEL.match(element.label)), None)
 
     if submit_button is not None:
+        if len(actions) >= MAX_ACTIONS_PER_STEP:
+            return {
+                "route": ROUTE_DONE,
+                "status": StepStatus.CONTINUE.value,
+                "actions": _wire(actions),
+                "answers_used": answers_used,
+                "llm_calls": llm_calls,
+                "notes": notes,
+            }
+        actions.append(submit(submit_button.ref))
         return {
             "route": ROUTE_SUBMIT,
             "status": StepStatus.CONTINUE.value,
@@ -179,7 +250,7 @@ async def handle_form(state: AgentState, ctx: StepContext) -> dict:
             "notes": notes,
         }
 
-    if next_button is not None:
+    if next_button is not None and len(actions) < MAX_ACTIONS_PER_STEP:
         actions.append(click(next_button.ref))
 
     return {
@@ -206,13 +277,8 @@ def prepare_submit(state: AgentState, ctx: StepContext) -> dict:
             "actions": _wire(actions),
         }
 
-    actions.append(submit())
     return {
         "status": StepStatus.CONTINUE.value,
         "actions": _wire(actions),
-        # Recorded now, not on the confirmation page, so an interrupted tab still
-        # leaves an honest entry in the ledger.
-        "job_status": ApplicationStatus.APPLIED.value,
-        "job_reason": None,
         "answers_used": answers_used,
     }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Platform } from "@/lib/contract";
 import { detectPlatform, platformLabel, portalHomeUrl } from "@/lib/platforms";
+import { shouldShowPairingForm } from "@/lib/connection-state";
 
 type Stats = { applied: number; skipped: number; stuck: number; message: string };
 
@@ -37,7 +38,7 @@ export function Popup() {
   const [state, setState] = useState<PopupState | null>(null);
   const [tab, setTab] = useState<TabInfo>({ platform: null, signedIn: null, tabId: null });
   const [code, setCode] = useState("");
-  const [dryRun, setDryRun] = useState(true);
+  const [reconnectRequested, setReconnectRequested] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [debug, setDebug] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export function Popup() {
   const refresh = useCallback(async () => {
     const next = (await chrome.runtime.sendMessage({ type: "get-state" })) as PopupState;
     setState(next);
-    setError(next.lastError);
+    if (next.lastError) setError(next.lastError);
 
     const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
     const platform = active?.url ? detectPlatform(active.url) : null;
@@ -75,9 +76,15 @@ export function Popup() {
       error?: string;
     };
     setBusy(false);
-    if (result.ok) setCode("");
-    else setError(result.error ?? "Could not connect.");
+    if (result.ok) {
+      setCode("");
+      setReconnectRequested(false);
+      setError(null);
+    } else {
+      setError(result.error ?? "Could not connect.");
+    }
     await refresh();
+    if (!result.ok) setError(result.error ?? "Could not connect.");
   }
 
   async function startMagic() {
@@ -87,7 +94,6 @@ export function Popup() {
     const result = (await chrome.runtime.sendMessage({
       type: "start-run",
       platform: tab.platform,
-      dryRun,
     })) as { ok: boolean; error?: string };
     setBusy(false);
     if (!result.ok) setError(result.error ?? "Could not start.");
@@ -136,6 +142,7 @@ export function Popup() {
   }
 
   const running = state.running;
+  const showPairingForm = shouldShowPairingForm(state.connected, reconnectRequested);
 
   return (
     <main className="pop">
@@ -154,9 +161,11 @@ export function Popup() {
         )}
       </header>
 
-      {!state.connected ? (
+      {showPairingForm ? (
         <section className="body">
-          <p className="quote">Connect this browser.</p>
+          <p className="quote">
+            {state.connected ? "Reconnect this browser." : "Connect this browser."}
+          </p>
           <p className="hint">
             Dashboard → <strong>Settings → Connect extension</strong> → paste the eight-character
             code here.
@@ -199,8 +208,9 @@ export function Popup() {
             </ul>
           ) : null}
           <p className="hint subtle">
-            {running.dryRun ? "Practice run — nothing is submitted." : "Live run."} Work in other
-            tabs freely; just don't minimize the run window.
+            {running.dryRun
+              ? "This older run is non-submitting; stop it and start a fresh run to apply."
+              : "Live run. Work in other tabs freely; just don't minimize the run window."}
           </p>
           <div className="row">
             <button className="ghost" onClick={showRunWindow}>
@@ -222,6 +232,11 @@ export function Popup() {
               Open Naukri
             </button>
           </div>
+          {state.connected ? (
+            <button type="button" className="link" onClick={() => setReconnectRequested(true)}>
+              Reconnect with a new pairing code
+            </button>
+          ) : null}
         </section>
       ) : tab.signedIn === false ? (
         <section className="body">
@@ -230,6 +245,11 @@ export function Popup() {
           <button className="ghost" onClick={refresh}>
             I'm signed in
           </button>
+          {state.connected ? (
+            <button type="button" className="link" onClick={() => setReconnectRequested(true)}>
+              Reconnect with a new pairing code
+            </button>
+          ) : null}
         </section>
       ) : (
         <section className="body">
@@ -238,22 +258,30 @@ export function Popup() {
             Ready to apply in <strong>{platformLabel(tab.platform)}</strong>? It searches the last 24
             hours and works through the matches.
           </p>
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={dryRun}
-              onChange={(event) => setDryRun(event.target.checked)}
-            />
-            Practice run — fill, never submit
-          </label>
+          <p className="hint subtle">
+            Live run: supported Easy Apply forms can be submitted automatically using your profile
+            and approved answers. Review those details first.
+          </p>
           {state.lastStop ? (
             <p className="hint subtle">
               Last run ended: <strong>{explainStop(state.lastStop.reason)}</strong>
             </p>
           ) : null}
           <button className="primary" onClick={startMagic} disabled={busy}>
-            {busy ? "Starting…" : "Apply Magic"}
+            {busy ? "Starting…" : "Start live run"}
           </button>
+          {state.connected ? (
+            <button
+              type="button"
+              className="link"
+              onClick={() => {
+                setError(null);
+                setReconnectRequested(true);
+              }}
+            >
+              Reconnect with a new pairing code
+            </button>
+          ) : null}
         </section>
       )}
 

@@ -2,6 +2,7 @@ import { api, ApiError } from "@/lib/api";
 import { addVisited, clearToken, getState, getToken, hasVisited, patchState, type ActiveRun } from "@/lib/storage";
 import { searchUrlFor } from "@/lib/platforms";
 import { describeStep } from "@/lib/run-status";
+import { requiresReconnect } from "@/lib/connection-state";
 import type { Action, Observation, Platform } from "@/lib/contract";
 
 /**
@@ -26,7 +27,7 @@ type Message =
   | { type: "pair"; code: string }
   | { type: "disconnect" }
   | { type: "platform-status"; platform: Platform; signedIn: boolean }
-  | { type: "start-run"; platform: Platform; dryRun: boolean }
+  | { type: "start-run"; platform: Platform }
   | { type: "stop-run" }
   | { type: "resume-url" }
   | { type: "inspect" }
@@ -46,7 +47,15 @@ export default defineBackground(() => {
         sendResponse(await handle(message as Message, sender.tab?.id));
       } catch (error) {
         const text = error instanceof ApiError ? error.message : toText(error);
-        await patchState({ lastError: text });
+        const requestMessage = message as Message;
+        if (requiresReconnect(error) && requestMessage.type !== "pair") {
+          await clearToken();
+          await patchState({
+            lastError: "Connection revoked. Enter the new pairing code from Dashboard Settings.",
+          });
+        } else {
+          await patchState({ lastError: text });
+        }
         sendResponse({ ok: false, error: text });
       }
     })();
@@ -117,7 +126,7 @@ async function handle(message: Message, _tabId?: number) {
     }
 
     case "start-run":
-      return startRun(message.platform, message.dryRun);
+      return startRun(message.platform);
 
     case "stop-run":
       await stopRun("user_stopped");
@@ -141,14 +150,14 @@ async function handle(message: Message, _tabId?: number) {
 
 // ------------------------------------------------------------------ run control
 
-async function startRun(platform: Platform, dryRun: boolean) {
+async function startRun(platform: Platform) {
   const token = await getToken();
   if (!token) return { ok: false, error: "Connect the extension in Settings first." };
 
   const existing = await getState();
   if (existing.run) return { ok: false, error: "A run is already active." };
 
-  const started = await api.startRun(token, platform, dryRun);
+  const started = await api.startRun(token, platform);
 
   if (!started.search.roles.length) {
     await api.stopRun(token, started.run.id, "no_target_roles").catch(() => undefined);
@@ -172,14 +181,14 @@ async function startRun(platform: Platform, dryRun: boolean) {
     platform,
     tabId,
     windowId: created.id,
-    dryRun,
+    dryRun: false,
     startedAt: Date.now(),
     visited: [],
     stats: { applied: 0, skipped: 0, stuck: 0, message: "Starting…" },
     reopened: 0,
     resumeAt: null,
     searchUrl,
-    log: [`${clock()} opened ${platform} · ${dryRun ? "practice" : "live"}`],
+    log: [`${clock()} opened ${platform} · live`],
   };
 
   await patchState({ run: active, lastError: null, lastStop: null });
@@ -204,7 +213,16 @@ async function tick(): Promise<void> {
   if (!state.run) return;
 
   if (state.token) {
-    const beat = await api.heartbeat(state.token, state.run.id).catch(() => null);
+    const beat = await api.heartbeat(state.token, state.run.id).catch(async (error) => {
+      if (requiresReconnect(error)) {
+        await clearToken();
+        await patchState({
+          lastError: "Connection revoked. Enter the new pairing code from Dashboard Settings.",
+        });
+      }
+      return null;
+    });
+    if (!beat && !(await getToken())) return;
     if (beat && !beat.allowed) {
       await stopRun(beat.reason ?? "policy_stop");
       return;
@@ -422,7 +440,16 @@ async function loop(): Promise<void> {
       // A click that opens a job is an SPA navigation: the URL and the detail
       // pane arrive a moment later. Without this wait the next observation still
       // sees the old list, and it clicks the same card again.
-      if (response.actions.some((action) => action.type === "click")) {
+      const opensEasyApply = response.actions.some((action) => {
+        if (action.type !== "click") return false;
+        const element = observed.draft.elements.find((candidate) => candidate.ref === action.ref);
+        return /\beasy\s*apply\b/i.test(element?.label ?? "");
+      });
+      if (
+        response.actions.some((action) => action.type === "click") &&
+        observed.draft.page_type !== "apply_form" &&
+        !opensEasyApply
+      ) {
         await waitForUrlChange(active.tabId, urlBefore, 6000);
       }
 
@@ -430,7 +457,14 @@ async function loop(): Promise<void> {
       if (outcome.submitted) await sleep(2500);
     }
   } catch (error) {
-    await patchState({ lastError: toText(error) });
+    if (requiresReconnect(error)) {
+      await clearToken();
+      await patchState({
+        lastError: "Connection revoked. Enter the new pairing code from Dashboard Settings.",
+      });
+    } else {
+      await patchState({ lastError: toText(error) });
+    }
   } finally {
     loopActive = false;
   }

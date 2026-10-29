@@ -5,12 +5,10 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { GoogleButton } from "@/components/GoogleButton";
-import { Button, Rule } from "@/components/ui/primitives";
 import { api, HttpError } from "@/lib/api";
 import { useMe } from "@/hooks/useMe";
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-const DEV_LOGIN = import.meta.env.VITE_ENABLE_DEV_LOGIN === "true";
 
 export function SignIn() {
   const navigate = useNavigate();
@@ -31,15 +29,6 @@ export function SignIn() {
           : "Could not reach the server. Is the API running?",
       );
     },
-  });
-
-  const devSignIn = useMutation({
-    mutationFn: () => api.devSignIn(),
-    onSuccess: (session) => {
-      queryClient.setQueryData(["me"], session);
-      navigate(session.onboarding.done ? "/app" : "/setup", { replace: true });
-    },
-    onError: (cause) => setError(cause instanceof HttpError ? cause.message : "Sign-in failed."),
   });
 
   // Already signed in: skip this screen entirely.
@@ -99,23 +88,6 @@ export function SignIn() {
               </div>
             ) : null}
 
-            {DEV_LOGIN ? (
-              <>
-                <Rule label="Local only" />
-                <Button
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => devSignIn.mutate()}
-                  disabled={devSignIn.isPending}
-                >
-                  {devSignIn.isPending ? "Signing in…" : "Sign in as a test user"}
-                </Button>
-                <p className="text-[11.5px] leading-relaxed text-ink-3">
-                  Only shown when <code className="font-mono">VITE_ENABLE_DEV_LOGIN=true</code> and
-                  the API is running in development.
-                </p>
-              </>
-            ) : null}
           </div>
 
           <div className="mt-10 border-t border-line pt-5">

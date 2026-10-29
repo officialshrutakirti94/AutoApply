@@ -10,6 +10,7 @@ import {
   type PlatformAdapter,
 } from "./types.ts";
 import { detectSignals } from "./detect.ts";
+import { findLinkedInEasyApplyModal } from "./linkedin-modal.ts";
 
 /**
  * LinkedIn.
@@ -19,7 +20,6 @@ import { detectSignals } from "./detect.ts";
  * exactly what was described.
  */
 
-const MODAL = ".jobs-easy-apply-modal, [data-test-modal-id='easy-apply-modal']";
 const FIELD = ".fb-dash-form-element";
 const CARD = "div.job-card-container[data-job-id], li[data-occludable-job-id]";
 const JOB_DETAILS =
@@ -38,7 +38,7 @@ function isVisible(node: Element): boolean {
 }
 
 function accessibleLabel(node: Element): string {
-  return `${text(node)} ${node.getAttribute("aria-label") ?? ""}`.trim();
+  return text(node) || node.getAttribute("aria-label")?.trim() || "";
 }
 
 function findEasyApplyControl(scope: Element): Element | null {
@@ -167,7 +167,26 @@ function unknownPage(doc: Document, url: string, signals: Signal[]): ObserveResu
 function observe(doc: Document, url: string): ObserveResult {
   const signals = signalsOf(doc);
 
-  const modal = doc.querySelector(MODAL);
+  if (applicationConfirmed(doc)) {
+    return {
+      draft: {
+        page_type: "confirmation",
+        job: jobOf(
+          jobIdFromUrl(url) ?? "unknown",
+          jobTitle(doc) || null,
+          null,
+          url,
+        ),
+        elements: [],
+        chat: null,
+        page_text_digest: digest(doc),
+        signals,
+      },
+      refs: new Map(),
+    };
+  }
+
+  const modal = findLinkedInEasyApplyModal(doc);
   if (modal) return applyForm(doc, url, modal, signals);
 
   // Linkedin also puts `?currentJobId=` on the results page, because it opens the
@@ -182,6 +201,21 @@ function observe(doc: Document, url: string): ObserveResult {
   }
 
   return searchResults(doc, url, signals) ?? unknownPage(doc, url, signals);
+}
+
+function applicationConfirmed(doc: Document): boolean {
+  const pattern =
+    /\byour application (?:was|has been) sent\b|\bapplication submitted successfully\b|\bapplication sent to\b/i;
+  const candidates = [
+    findLinkedInEasyApplyModal(doc),
+    doc.querySelector("[role='alert']"),
+    doc.querySelector("[aria-live='polite']"),
+    doc.querySelector(".artdeco-toast-item"),
+  ].filter((node): node is Element => Boolean(node));
+
+  if (candidates.some((node) => pattern.test(text(node)))) return true;
+  const visibleText = (doc.body as HTMLElement | null)?.innerText;
+  return typeof visibleText === "string" && pattern.test(visibleText);
 }
 
 function searchResults(doc: Document, url: string, signals: Signal[]): ObserveResult | null {
@@ -302,12 +336,15 @@ function applyForm(doc: Document, url: string, modal: Element, signals: Signal[]
   const elements: FormElement[] = [];
 
   for (const field of Array.from(modal.querySelectorAll(FIELD)).slice(0, 20)) {
-    const labelEl = field.querySelector(".fb-dash-form-element__label");
+    const labelEl = field.querySelector(
+      "[data-test-text-entity-list-form-title], .fb-dash-form-element__label, .artdeco-text-input--label, label",
+    );
     const label = text(labelEl);
     if (!label) continue;
 
     const required =
       Boolean(field.querySelector("[data-test-text-entity-list-form-required]")) ||
+      Boolean(field.querySelector("[required], [aria-required='true']")) ||
       Boolean(labelEl?.className?.toString().includes("is-required"));
 
     const select = field.querySelector("select");
@@ -323,10 +360,18 @@ function applyForm(doc: Document, url: string, modal: Element, signals: Signal[]
         element(refs.assign("f", select), "select", label, {
           options: optionLabels(select.querySelectorAll("option")),
           required,
+          value: selectedOptionLabel(select),
         }),
       );
     } else if (file) {
-      elements.push(element(refs.assign("f", file), "file", label, { required }));
+      elements.push(
+        element(refs.assign("f", file), "file", label, {
+          required,
+          value: (file as HTMLInputElement).files?.length
+            ? (file as HTMLInputElement).files?.[0]?.name
+            : null,
+        }),
+      );
     } else if (radios.length) {
       const options = radios
         .map((radio) => {
@@ -339,9 +384,29 @@ function applyForm(doc: Document, url: string, modal: Element, signals: Signal[]
           return text(forLabel) || radio.getAttribute("value") || "";
         })
         .filter(Boolean);
-      elements.push(element(refs.assign("f", field), "radio", label, { options, required }));
+      const selected = radios.find((radio) => (radio as HTMLInputElement).checked);
+      const selectedId = selected?.getAttribute("id");
+      const selectedLabel = selectedId
+        ? Array.from(field.querySelectorAll("label")).find(
+            (node) => node.getAttribute("for") === selectedId,
+          )
+        : undefined;
+      elements.push(
+        element(refs.assign("f", field), "radio", label, {
+          options,
+          required,
+          value: selected
+            ? text(selectedLabel) || selected.getAttribute("value") || null
+            : null,
+        }),
+      );
     } else if (checkbox) {
-      elements.push(element(refs.assign("f", checkbox), "checkbox", label, { required }));
+      elements.push(
+        element(refs.assign("f", checkbox), "checkbox", label, {
+          required,
+          value: (checkbox as HTMLInputElement).checked ? "true" : null,
+        }),
+      );
     } else if (textInput) {
       elements.push(
         element(refs.assign("f", textInput), "text", label, {
@@ -355,20 +420,30 @@ function applyForm(doc: Document, url: string, modal: Element, signals: Signal[]
   // The resume step has no labelled fields, only the upload well.
   const fileInput = modal.querySelector("input[type=file]");
   const uploadWell = modal.querySelector(".jobs-document-upload__container");
-  if (fileInput || (uploadWell && /upload/i.test(text(uploadWell)))) {
+  if (!elements.some((item) => item.kind === "file") && (fileInput || uploadWell)) {
+    const uploadContext =
+      fileInput?.closest(".jobs-document-upload__container") ?? uploadWell;
+    const uploadLabel = text(uploadContext);
+    const label = /\b(resume|curriculum\s+vitae|cv)\b/i.test(uploadLabel)
+      ? uploadLabel
+      : "Required document upload";
     const target = fileInput ?? uploadWell;
-    if (target) {
-      elements.push(element(refs.assign("f", target), "file", "Resume", { required: true }));
-    }
+    if (target) elements.push(element(refs.assign("f", target), "file", label, { required: true }));
   }
 
   for (const button of Array.from(modal.querySelectorAll("button"))
     .filter((node) => {
-      const label = text(node);
-      return KEEP_BUTTON.test(label) && !DROP_BUTTON.test(label) && label.length < 40;
+      const label = accessibleLabel(node);
+      return (
+        isVisible(node) &&
+        !(node as HTMLButtonElement).disabled &&
+        KEEP_BUTTON.test(label) &&
+        !DROP_BUTTON.test(label) &&
+        label.length < 80
+      );
     })
     .slice(0, 3)) {
-    elements.push(element(refs.assign("b", button), "button", text(button)));
+    elements.push(element(refs.assign("b", button), "button", accessibleLabel(button)));
   }
 
   return {
@@ -387,6 +462,18 @@ function applyForm(doc: Document, url: string, modal: Element, signals: Signal[]
     },
     refs: refs.bound,
   };
+}
+
+function selectedOptionLabel(select: Element): string | null {
+  const htmlSelect = select as HTMLSelectElement;
+  const option =
+    Array.from(htmlSelect.options ?? []).find((item) => item.selected) ??
+    Array.from(select.querySelectorAll("option")).find(
+      (item) => item.getAttribute("value") === htmlSelect.value,
+    );
+  const label = text(option);
+  if (!label || /^(select an option|--|choose|please select)$/i.test(label)) return null;
+  return label;
 }
 
 export const linkedin: PlatformAdapter = { observe };

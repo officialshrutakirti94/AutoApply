@@ -6,7 +6,6 @@ interface ImportMetaEnv {
   readonly VITE_APP_NAME?: string;
   readonly VITE_SUPPORT_EMAIL?: string;
   readonly VITE_EXTENSION_DOWNLOAD_URL?: string;
-  readonly VITE_ENABLE_DEV_LOGIN?: string;
   readonly VITE_SENTRY_DSN?: string;
 }
 

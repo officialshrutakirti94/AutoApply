@@ -1,16 +1,6 @@
 import type { Application, ApplicationStatus } from "@/lib/api";
 
-/**
- * The three buckets the dashboard is built around.
- *
- * `needs_attention` is split by *why* it stopped, because the two halves need
- * completely different things from the user:
- *
- *   waiting - the agent would not answer a question on its own. It is waiting for
- *             the user to confirm an answer, and the application can still be sent.
- *   cantSend - structural dead ends (external site, already applied, CAPTCHA...).
- *             Nothing for the user to do, so it is only informational.
- */
+/** The application ledger buckets displayed in the dashboard. */
 export type Bucket = "sent" | "waiting" | "preferred" | "cantSend";
 
 const QUESTION_REASONS = new Set([
@@ -21,12 +11,8 @@ const QUESTION_REASONS = new Set([
 
 export function bucketOf(application: Application): Bucket {
   if (application.status === "applied" || application.status === "dry_run") return "sent";
-  if (
-    application.status === "needs_attention" &&
-    QUESTION_REASONS.has(application.reason ?? "")
-  ) {
-    return "waiting";
-  }
+  if (application.status === "needs_attention" && QUESTION_REASONS.has(application.reason ?? ""))
+    return "cantSend";
   // Applies on the company's own site: the user does this one by hand, so it gets
   // its own inbox instead of being buried in "can't send".
   if (application.status === "skipped" && application.reason === "external_redirect") {
@@ -55,7 +41,10 @@ export function split(applications: Application[]) {
 }
 
 export function isQuestionBlocked(application: Application): boolean {
-  return bucketOf(application) === "waiting";
+  return (
+    application.status === "needs_attention" &&
+    QUESTION_REASONS.has(application.reason ?? "")
+  );
 }
 
 export const STATUS_LABEL: Record<ApplicationStatus, string> = {

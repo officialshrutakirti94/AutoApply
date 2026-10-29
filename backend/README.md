@@ -194,7 +194,8 @@ lower the daily/hourly caps, never raise them past 25 and 6.
 user's own timezone** (`SAFETY_DAY_RESET_HOUR=10`, `SAFETY_DEFAULT_TIMEZONE`). It is
 enforced in three places — at run start, on every heartbeat, and at the moment of
 submission inside `/agent/step`, where the `submit` action is removed from the response
-if the allowance is gone. `dry_run` applications count too. See
+if the allowance is gone. Historical `dry_run` application records still count.
+New runs are live and reject practice mode. See
 [`../ARCHITECTURE.md`](../ARCHITECTURE.md#551-the-daily-quota-in-detail).
 
 ---
@@ -216,7 +217,7 @@ SQLite, and every ORM path under test is the one that runs in production.
 | `test_smoke.py` | Boot, health, dev sign-in, CSRF gate, onboarding gate |
 | `test_authz.py` | Cross-user isolation, extension scope limits, revocation, expiry, account deletion |
 | `test_safety.py` | Caps, warm-up, cooldown, rest day, active hours, run window, one-run-per-user, heartbeat sweep, pacing floors |
-| `test_agent_step.py` | Every graph branch, dry-run never submits, unknown refs rejected, duplicate applications |
+| `test_agent_step.py` | Every graph branch, legacy dry-run guard, unknown refs rejected, duplicate applications |
 | `test_answers.py` | Rules → bank → model order, sensitive routing, invented numbers rejected |
 | `test_resume.py` | DOCX parse, scanned-PDF fallback, size/type rejection |
 | `test_quota.py` | The 10/day quota, the 10:00 local reset, timezone handling, warm-up ramp, and the server-side block on submit |

@@ -1,6 +1,10 @@
 import { detectPlatform } from "@/lib/platforms";
 import { runActions } from "@/lib/actions";
 import { adapterFor } from "@/platforms";
+import {
+  closestLinkedInEasyApplyModal,
+  findLinkedInEasyApplyModal,
+} from "@/platforms/linkedin-modal";
 import { detectSignedIn } from "@/platforms/detect";
 import { mergeVisitedJobIds } from "@/lib/job-queue";
 import type { Action } from "@/lib/contract";
@@ -26,6 +30,7 @@ export default defineContentScript({
     const plugin = detected;
     const adapter = adapterFor(plugin);
     let refs = new Map<string, Element>();
+    let submitAttempted = false;
     /** Cards already dealt with this run, so the agent never re-opens one. */
     const visited = new Set<string>();
 
@@ -66,6 +71,26 @@ export default defineContentScript({
         }
 
         let result = adapter.observe(document, location.href);
+
+        if (
+          plugin === "linkedin" &&
+          submitAttempted &&
+          result.draft.page_type !== "confirmation"
+        ) {
+          result = {
+            draft: {
+              ...result.draft,
+              page_type: "unknown",
+              elements: [],
+              signals: [...new Set([...result.draft.signals, "unknown_page" as const])],
+              page_text_digest:
+                "The submit action was attempted, but LinkedIn did not show an application confirmation.",
+            },
+            refs: new Map(),
+          };
+        } else if (plugin === "linkedin" && result.draft.page_type === "confirmation") {
+          submitAttempted = false;
+        }
 
         // Drop cards this run has already handled. The backend always picks the
         // first match, so use the service worker's persisted visited IDs too:
@@ -112,10 +137,43 @@ export default defineContentScript({
 
       if (type === "act") {
         const actions = (message as { actions: Action[] }).actions ?? [];
-        void runActions(actions, refs, {
-          baseUrl: location.href,
-          attachResume: fetchResume,
-        }).then(sendResponse);
+        const clickTarget = actions
+          .filter((action) => action.type === "click")
+          .map((action) => (action.ref ? refs.get(action.ref) : null))
+          .find((target): target is Element => Boolean(target));
+        const clickLabel = clickTarget
+          ? `${clickTarget.textContent ?? ""} ${clickTarget.getAttribute("aria-label") ?? ""}`
+              .replace(/\s+/g, " ")
+              .trim()
+          : "";
+        const modalBefore = Boolean(findLinkedInEasyApplyModal(document));
+        const modalSignatureBefore = modalStageSignature();
+
+        void (async () => {
+          const outcome = await runActions(actions, refs, {
+            baseUrl: location.href,
+            attachResume: fetchResume,
+          });
+          if (!outcome.ok) {
+            sendResponse(outcome);
+            return;
+          }
+
+          if (
+            plugin === "linkedin" &&
+            clickTarget &&
+            (closestLinkedInEasyApplyModal(clickTarget) || /\beasy\s*apply\b/i.test(clickLabel))
+          ) {
+            await waitForModalTransition(modalBefore, modalSignatureBefore, 6000);
+            await settle(180, 1200);
+          }
+
+          if (plugin === "linkedin" && outcome.submitted) {
+            submitAttempted = true;
+            await waitForApplicationConfirmation(8000);
+          }
+          sendResponse(outcome);
+        })();
         return true;
       }
 
@@ -272,7 +330,9 @@ export default defineContentScript({
       const response = await fetch(answer.url);
       if (!response.ok) throw new Error(`Resume download failed (${response.status})`);
       const blob = await response.blob();
-      const name = answer.url.toLowerCase().includes(".docx") ? "resume.docx" : "resume.pdf";
+      const name = blob.type.includes("wordprocessingml")
+        ? "resume.docx"
+        : "resume.pdf";
       return new File([blob], name, { type: blob.type || "application/octet-stream" });
     }
 
@@ -293,6 +353,63 @@ export default defineContentScript({
         const cap = window.setTimeout(done, maxMs);
         observer.observe(document.body, { childList: true, subtree: true, attributes: true });
         timer = window.setTimeout(done, quietMs);
+      });
+    }
+
+    function modalStageSignature(): string | null {
+      const modal = findLinkedInEasyApplyModal(document);
+      if (!modal) return null;
+      const content =
+        modal.querySelector(".jobs-easy-apply-modal__content") ?? modal;
+      return (content.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 3000);
+    }
+
+    function waitForModalTransition(
+      wasOpen: boolean,
+      before: string | null,
+      timeoutMs: number,
+    ): Promise<void> {
+      return waitForDomCondition(
+        () => {
+          const after = modalStageSignature();
+          return wasOpen ? after !== null && after !== before : after !== null;
+        },
+        timeoutMs,
+      );
+    }
+
+    function waitForApplicationConfirmation(timeoutMs: number): Promise<void> {
+      return waitForDomCondition(
+        () => adapter.observe(document, location.href).draft.page_type === "confirmation",
+        timeoutMs,
+      );
+    }
+
+    function waitForDomCondition(
+      condition: () => boolean,
+      timeoutMs: number,
+    ): Promise<void> {
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          observer.disconnect();
+          window.clearTimeout(timer);
+          resolve();
+        };
+        const check = () => {
+          if (condition()) finish();
+        };
+        const observer = new MutationObserver(check);
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true,
+        });
+        const timer = window.setTimeout(finish, timeoutMs);
+        check();
       });
     }
 
@@ -327,8 +444,8 @@ export default defineContentScript({
         <div class="card">
           <button class="dismiss" aria-label="Dismiss">×</button>
           <div class="row"><span class="dot"></span><span class="label">AutoApply</span></div>
-          <p>Ready to apply in ${plugin === "linkedin" ? "LinkedIn" : "Naukri"}? It searches the last 24 hours.</p>
-          <button id="go">Apply Magic</button>
+          <p>Live run: AutoApply may submit supported applications in ${plugin === "linkedin" ? "LinkedIn" : "Naukri"} using your profile and saved answers.</p>
+          <button id="go">Start live run</button>
         </div>`;
 
       root.querySelector(".dismiss")?.addEventListener("click", () => host.remove());
@@ -338,12 +455,11 @@ export default defineContentScript({
         const answer = (await chrome.runtime.sendMessage({
           type: "start-run",
           platform: plugin,
-          dryRun: true,
         })) as { ok: boolean; error?: string };
         if (!answer.ok) {
           const paragraph = root.querySelector("p");
           if (paragraph) paragraph.textContent = answer.error ?? "Could not start.";
-          if (button) button.textContent = "Apply Magic";
+          if (button) button.textContent = "Start live run";
         } else {
           host.remove();
         }

@@ -109,6 +109,15 @@ def test_valid_payloads_are_accepted_by_both():
     assert _pydantic_accepts(AgentResponse, response)
 
 
+def test_submit_action_requires_an_observed_button_ref():
+    response = {
+        "actions": [{"type": "submit", "ref": "b1"}],
+        "status": "continue",
+    }
+    assert _schema_accepts("agentResponse", response)
+    assert _pydantic_accepts(AgentResponse, response)
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
@@ -136,7 +145,7 @@ def test_invalid_observations_are_rejected_by_both(mutate):
         {"actions": [], "status": "continue"},
         {"actions": [], "status": "hitl"},
         {"actions": [{"type": "fill_text", "ref": "f1"}], "status": "continue"},
-        {"actions": [{"type": "submit", "ref": "b1"}], "status": "continue"},
+        {"actions": [{"type": "submit"}], "status": "continue"},
         {"actions": [{"type": "wait"}], "status": "continue"},
         {"actions": [{"type": "teleport", "ref": "f1"}], "status": "continue"},
         {"actions": [{"type": "click", "ref": "f1"}] * 11, "status": "continue"},

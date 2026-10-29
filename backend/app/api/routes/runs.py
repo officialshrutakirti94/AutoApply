@@ -11,18 +11,18 @@ from app.api.schemas import (
     ActiveRunOut,
     HeartbeatOut,
     RunOut,
+    SearchPlanOut,
     StartRunOut,
     StartRunRequest,
-    SearchPlanOut,
     StopRunRequest,
 )
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbSession, ExtensionAuth
 from app.core.errors import Forbidden
+from app.core.timeutils import utcnow
 from app.db.models import Preference, User
 from app.safety import governor
 from app.safety.policy import local_day_bounds, resolve_window, usage_snapshot
-from app.core.timeutils import utcnow
 from app.services import applications as applications_service
 from app.services import runs as runs_service
 
@@ -42,7 +42,7 @@ async def start_run(
         raise Forbidden("Sign in again.")
 
     run = await runs_service.start_run(
-        db, user=user, platform=payload.platform, dry_run=payload.dry_run
+        db, user=user, platform=payload.platform, dry_run=False
     )
 
     preference = await db.get(Preference, principal.user_id)

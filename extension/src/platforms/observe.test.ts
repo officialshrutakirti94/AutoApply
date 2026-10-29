@@ -56,6 +56,88 @@ test("linkedin: the Easy Apply modal becomes a form", { skip: !has("linkedin/app
     draft.elements.some((el) => el.kind === "select" && /country code/i.test(el.label ?? "")),
     "the phone country code is a select too",
   );
+  const phone = draft.elements.find(
+    (el) => el.kind === "text" && /mobile phone number/i.test(el.label ?? ""),
+  );
+  assert.ok(phone?.required, "the native phone field must be observed as required");
+  assert.ok(draft.elements.some((el) => el.kind === "button" && /next/i.test(el.label ?? "")));
+});
+
+test("linkedin: accessible Easy Apply contact dialog exposes prefilled contact controls", () => {
+  const doc = parseHTML(`
+    <body>
+      <div role="dialog" class="artdeco-modal">
+        <h2>Apply to HRM Counsel</h2>
+        <div class="fb-dash-form-element">
+          <label>Email address*</label>
+          <select><option selected>person@example.com</option></select>
+        </div>
+        <div class="fb-dash-form-element">
+          <label>Phone country code*</label>
+          <select><option selected>India (+91)</option></select>
+        </div>
+        <div class="fb-dash-form-element">
+          <label class="artdeco-text-input--label">Mobile phone number*</label>
+          <input type="tel" required value="9876543210">
+        </div>
+        <button>Next</button>
+      </div>
+    </body>
+  `).document as unknown as Document;
+  const { draft } = linkedin.observe(doc, "https://www.linkedin.com/jobs/view/12345/");
+
+  assert.equal(draft.page_type, "apply_form");
+  assert.equal(
+    draft.elements.find((field) => /email/i.test(field.label ?? ""))?.value,
+    "person@example.com",
+  );
+  assert.equal(
+    draft.elements.find((field) => /country code/i.test(field.label ?? ""))?.value,
+    "India (+91)",
+  );
+  assert.equal(
+    draft.elements.find((field) => /mobile phone/i.test(field.label ?? ""))?.value,
+    "9876543210",
+  );
+  assert.ok(draft.elements.some((field) => field.kind === "button" && field.label === "Next"));
+});
+
+test("linkedin: unrelated accessible dialogs are not treated as Easy Apply", () => {
+  const doc = parseHTML(`
+    <body>
+      <div role="dialog"><h2>Share job</h2><button>Next</button></div>
+      <div class="jobs-details__main-content"><h1>Software Engineer</h1></div>
+    </body>
+  `).document as unknown as Document;
+  const { draft } = linkedin.observe(doc, "https://www.linkedin.com/jobs/view/12345/");
+
+  assert.equal(draft.page_type, "unknown");
+});
+
+test("linkedin: an unlabeled upload control is not assumed to be a resume", () => {
+  const doc = parseHTML(`
+    <body>
+      <div role="dialog" class="artdeco-modal">
+        <h2>Apply to HRM Counsel</h2>
+        <input type="file">
+        <button>Next</button>
+      </div>
+    </body>
+  `).document as unknown as Document;
+  const { draft } = linkedin.observe(doc, "https://www.linkedin.com/jobs/view/12345/");
+
+  assert.equal(draft.page_type, "apply_form");
+  assert.equal(draft.elements.find((field) => field.kind === "file")?.label, "Required document upload");
+});
+
+test("linkedin: a positive application confirmation is terminal", () => {
+  const doc = parseHTML(
+    "<body><div role='alert'>Your application was sent to Acme.</div></body>",
+  ).document as unknown as Document;
+  const { draft } = linkedin.observe(doc, "https://www.linkedin.com/jobs/view/12345/");
+
+  assert.equal(draft.page_type, "confirmation");
+  assert.equal(draft.job.id, "12345");
 });
 
 test("linkedin: an empty job pane needs a human, it is not an external job", () => {

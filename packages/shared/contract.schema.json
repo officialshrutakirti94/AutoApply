@@ -153,7 +153,11 @@
           "then": { "required": ["ms"] }
         },
         {
-          "if": { "properties": { "type": { "enum": ["submit", "finish"] } } },
+          "if": { "properties": { "type": { "const": "submit" } } },
+          "then": { "required": ["ref"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "finish" } } },
           "then": { "not": { "required": ["ref"] } }
         }
       ]

@@ -264,14 +264,17 @@ def _run_steps(run: Run, args) -> str | None:
         c.post("/api/platform/status", json={"platform": "linkedin", "signed_in": True}, headers=ext).status_code == 204,
     )
 
-    print("\n7. Start a dry run")
-    start = c.post("/api/runs/start", json={"platform": "linkedin", "dry_run": True}, headers=ext)
+    print("\n7. Start a live run")
+    start = c.post("/api/runs/start", json={"platform": "linkedin", "dry_run": False}, headers=ext)
     if start.status_code == 403:
         reason = start.json()["error"]["message"]
         run.step("POST /api/runs/start", False, reason)
         print("      If this says 'rest day', run with SAFETY_REST_DAY=7 locally.")
         return email
-    run.step("POST /api/runs/start", start.status_code == 200)
+    run.step(
+        "POST /api/runs/start creates a live run",
+        start.status_code == 200 and start.json()["run"]["dry_run"] is False,
+    )
     if start.status_code != 200:
         return email
 
@@ -321,8 +324,24 @@ def _run_steps(run: Run, args) -> str | None:
     actions = form_body.get("actions", [])
     values = {a.get("ref"): a.get("value") for a in actions}
     run.step("answers come from the profile", values.get("f1") == "Priya Sharma" and values.get("f3") == "18 LPA", str(values))
-    run.step("dry run never submits", all(a["type"] != "submit" for a in actions) and form_body.get("reason") == "dry_run_complete")
+    run.step(
+        "final submit targets the observed button",
+        actions[-1:] == [{"type": "submit", "ref": "b9"}] and form_body.get("meta", {}).get("job_status") is None,
+        str(actions),
+    )
     run.step("zero model calls", form_body.get("meta", {}).get("llm_calls") == 0)
+
+    confirmation = c.post(
+        "/api/agent/step",
+        json=observation(run_id, page_type="confirmation", job_id="smoke-1"),
+        headers=ext,
+    )
+    confirmation_body = confirmation.json() if confirmation.status_code == 200 else {}
+    run.step(
+        "application is recorded only after confirmation",
+        confirmation_body.get("meta", {}).get("job_status") == "applied",
+        str(confirmation_body.get("meta", {}).get("job_status")),
+    )
 
     sensitive = c.post(
         "/api/agent/step",
@@ -352,7 +371,7 @@ def _run_steps(run: Run, args) -> str | None:
     items = ledger.json().get("items", []) if ledger.status_code == 200 else []
     statuses = {item["status"] for item in items}
     run.step("GET /api/applications", ledger.status_code == 200, f"{len(items)} rows")
-    run.step("dry run recorded", "dry_run" in statuses, str(sorted(statuses)))
+    run.step("confirmed submission recorded", "applied" in statuses, str(sorted(statuses)))
     run.step("stuck job recorded", "needs_attention" in statuses)
     stuck = next((i for i in items if i["status"] == "needs_attention"), None)
     if stuck:
@@ -372,7 +391,7 @@ def _run_steps(run: Run, args) -> str | None:
     active = c.get("/api/runs/active").json()
     run.step("run is no longer active", active.get("run") is None)
 
-    blocked = c.post("/api/runs/start", json={"platform": "linkedin", "dry_run": True}, headers=ext)
+    blocked = c.post("/api/runs/start", json={"platform": "linkedin", "dry_run": False}, headers=ext)
     run.step(
         "starting again is blocked by the cooldown",
         blocked.status_code == 403 and blocked.json()["error"]["code"] == "policy_blocked",

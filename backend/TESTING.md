@@ -277,18 +277,18 @@ That is what the dashboard shows as **Connected**.
 
 ---
 
-### Step 11 — Start a dry run
+### Step 11 — Start a live run
 
 `POST /api/runs/start`
 
 ```json
-{ "platform": "linkedin", "dry_run": true }
+{ "platform": "linkedin", "dry_run": false }
 ```
 
 ```json
 {
   "run": {
-    "id": "0e6c…", "platform": "linkedin", "status": "running", "dry_run": true,
+    "id": "0e6c…", "platform": "linkedin", "status": "running", "dry_run": false,
     "max_applications": 5, "applied_count": 0, "skipped_count": 0, "stuck_count": 0, "llm_calls": 0
   },
   "pacing": { "action_delay_ms": 806, "apply_pause_s": 80, "long_break_s": null },
@@ -332,7 +332,9 @@ active hours, cooldown, cap). For local testing on a Sunday, start the server wi
 }
 ```
 
-Expect:
+Expect a submit action referencing the observed final button. The API test is
+simulating the browser conversation; only the extension can click that observed
+button in the user's LinkedIn tab.
 
 ```json
 {
@@ -379,23 +381,21 @@ Expect:
     { "type": "fill_text", "ref": "f1", "value": "Priya Sharma" },
     { "type": "fill_text", "ref": "f2", "value": "+91 98765 43210" },
     { "type": "fill_text", "ref": "f3", "value": "18 LPA" },
-    { "type": "fill_text", "ref": "f4", "value": "2 months" }
+    { "type": "fill_text", "ref": "f4", "value": "2 months" },
+    { "type": "submit", "ref": "b9" }
   ],
-  "status": "done",
-  "reason": "dry_run_complete",
-  "meta": { "job_status": "dry_run", "llm_calls": 0 }
+  "status": "continue",
+  "meta": { "job_status": null, "llm_calls": 0 }
 }
 ```
 
 Three things to notice:
 
 1. Every value came from the profile, with **zero model calls**.
-2. There is **no `submit` action** — it is a dry run. The fills are still returned so
-   you can watch the form get filled on a real page.
-3. `status: "done"` means this job is finished; the extension moves to the next one.
-
-Change `dry_run` to `false` when starting a run (step 11) and the same request returns
-a `submit` action plus `job_status: "applied"`.
+2. The submit action targets `b9`, the final button included in this observation.
+3. The application is not recorded as applied until a later confirmation observation.
+   Starting a run with `dry_run: true` is rejected; historical practice-run records
+   remain readable.
 
 ---
 
@@ -596,7 +596,8 @@ against in-memory SQLite and a local test server.
 - Onboarding cannot complete without roles, platforms and risk acceptance.
 - The extension token is scoped: it drives runs but cannot read the profile.
 - The agent answers from the profile with zero model calls.
-- A dry run never submits; a live run does.
+- New runs are live; starting with `dry_run: true` is rejected. Legacy run rows
+  retain their historical non-submitting behavior.
 - Sensitive questions go to a human with no actions emitted.
 - The ledger records both outcomes and can resolve them.
 - A CAPTCHA stops the run and blocks new runs for 48 hours.

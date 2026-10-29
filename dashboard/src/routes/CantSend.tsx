@@ -13,6 +13,47 @@ export function CantSend() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["applications"] }),
   });
 
+  const saveAnswer = async (
+    question: string,
+    answer: string,
+    sensitive: boolean,
+  ): Promise<void> => {
+    const normalize = (value: string) => {
+      let normalized = value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      for (const prefix of [
+        "what is your ",
+        "what are your ",
+        "whats your ",
+        "what s your ",
+        "please enter your ",
+        "please provide your ",
+        "enter your ",
+        "do you have a ",
+        "do you have an ",
+      ]) {
+        if (normalized.startsWith(prefix)) {
+          normalized = normalized.slice(prefix.length);
+          break;
+        }
+      }
+      return normalized.slice(0, 500);
+    };
+    const pattern = normalize(question);
+    const existing = (await api.listAnswers()).find(
+      (entry) => entry.question_pattern === pattern,
+    );
+    if (existing) {
+      await api.updateAnswer(existing.id, { answer, approved: true, sensitive });
+    } else {
+      await api.createAnswer({ question, answer, sensitive });
+    }
+  };
+
   return (
     <div className="mx-auto max-w-[1100px]">
       <header className="flex flex-wrap items-end justify-between gap-4 px-1 pb-5 pt-2">
@@ -22,9 +63,8 @@ export function CantSend() {
             Jobs it walked away from
           </h1>
           <p className="mt-1.5 max-w-[62ch] text-[13px] leading-relaxed text-ink-3">
-            Structural dead ends: the application lives on the company&rsquo;s own site, you
-            already applied, the role did not fit, or the platform showed a security check.
-            Nothing here needs you — it is a record, not a task.
+            Review why an application stopped. For unanswered required questions, add your own
+            response here to reuse on future jobs; this job will not be retried automatically.
           </p>
         </div>
         <Stamp tone="skipped">{ledger.counts.cantSend}</Stamp>
@@ -35,6 +75,7 @@ export function CantSend() {
         empty="Nothing was blocked. External redirects, already-applied jobs and CAPTCHA stops appear here."
         onResolve={(id) => dismiss.mutate(id)}
         resolving={dismiss.isPending}
+        onSaveAnswer={saveAnswer}
       />
     </div>
   );

@@ -74,7 +74,8 @@ When an application asks a screening question, the answer flow is:
 
 1. Match the question to a known profile fact.
 2. Look for an answer in your saved question-and-answer bank.
-3. If enabled and available, ask a configured language model for a grounded
+3. Only when deterministic rules and saved answers cannot resolve a standard,
+   non-sensitive question, ask a configured language model for a grounded
    proposal based on selected profile facts.
 4. Pause and ask you when an answer is sensitive, unknown, or not sufficiently
    supported.
@@ -84,9 +85,11 @@ Provider credentials stay on the backend; they must never be added to the
 dashboard or extension build.
 
 New AI-proposed answers are not treated as approved saved answers automatically.
-Review them in the dashboard before they can be reused. The system avoids guessing
+Review them in the dashboard before they can be reused. The system never guesses
 on sensitive topics such as demographic details, health, legal eligibility, or
-salary negotiations.
+salary negotiations. If you enter and save your own response to a blocked
+sensitive question, that explicitly approved answer may be reused on future
+applications; the blocked application itself is not retried automatically.
 
 When an LLM provider is enabled, relevant question text and profile facts may be
 sent to that provider to produce a proposal. Review the provider's privacy terms
@@ -115,10 +118,10 @@ The application ledger is organized into:
 
 | Dashboard section | What appears there |
 |---|---|
-| **Applications sent** | Applications recorded as submitted, plus practice-run entries |
-| **Waiting for confirmations** | Applications paused because a question needs your review |
+| **Applications sent** | Platform-confirmed submissions; historical test entries remain labeled |
+| **Waiting for confirmations** | Legacy records awaiting review |
 | **Preferred jobs** | Relevant jobs whose application continues on an external company site |
-| **Can't send** | Other skipped, blocked, or unsupported cases |
+| **Can't send** | Blocked jobs, including required questions that need your answer |
 
 The dashboard polls the backend for updated application and run data. It also
 provides profile and answer editing, extension pairing, and account data controls.
@@ -137,7 +140,6 @@ activity—not to evade detection:
 
 - Configurable active hours, quotas, and run limits enforced by the backend.
 - A default per-action delay, pauses between applications, and longer breaks.
-- A practice-run mode that fills supported forms but does not submit them.
 - Stop or human-attention paths for CAPTCHA, security checkpoints, rate limits,
   warning banners, sign-out, unknown pages, sensitive questions, and uncertain
   answers.
@@ -159,12 +161,10 @@ or automate around a platform warning.
 ## Supported behavior and current boundaries
 
 - **Platforms:** LinkedIn and Naukri.
-- **Easy Apply:** Supported flows can be filled and submitted when the live run
-  is enabled and no safety or human-review condition blocks the application.
+- **Easy Apply:** Supported flows are filled and submitted only after required
+  answers are safely resolved and LinkedIn visibly confirms the submission.
 - **External company applications:** Saved to Preferred for you to open and
   complete manually.
-- **Practice run:** Fills forms but never submits; enabled by default in the
-  extension build configuration.
 - **Unsupported or changed pages:** The run may stop and request attention rather
   than guessing.
 - **LLM providers:** Optional; provider keys and models are configured on the
@@ -203,7 +203,9 @@ Copy-Item .env.example .env
 Edit `backend/.env` for local development:
 
 - Set `APP_ENV=development`.
-- Set `AUTH_DEV_BYPASS=true` to enable the local development sign-in.
+- Configure Google OAuth if you want to sign into the dashboard locally. The
+  backend also has a development-only sign-in route for backend testing; the
+  dashboard intentionally does not expose a test-user button.
 - Set a unique `SECRET_KEY` (for example, generate one with
   `python -c "import secrets; print(secrets.token_urlsafe(48))"`).
 - Leave `DATABASE_URL` blank to use the local SQLite development database.
@@ -228,9 +230,11 @@ npm install
 Copy-Item .env.example .env
 ```
 
-In `dashboard/.env`, set `VITE_ENABLE_DEV_LOGIN=true` for local development.
-The dashboard uses the same-origin `/api` path and Vite proxies it to the local
-backend; leave `VITE_API_BASE_URL` empty.
+Set `VITE_GOOGLE_CLIENT_ID` in `dashboard/.env` and `GOOGLE_CLIENT_ID` in
+`backend/.env` to the same Google Web client ID. Add `http://localhost:5173` as
+an authorized JavaScript origin in Google Cloud Console. The dashboard uses the
+same-origin `/api` path and Vite proxies it to the local backend; leave
+`VITE_API_BASE_URL` empty.
 
 Start the dashboard:
 
@@ -238,7 +242,7 @@ Start the dashboard:
 npm run dev
 ```
 
-Open `http://localhost:5173`, use the development sign-in, and complete onboarding.
+Open `http://localhost:5173`, sign in with Google, and complete onboarding.
 Upload and review your resume/profile, set target roles and preferences, and
 acknowledge the platform-risk notice.
 
@@ -257,7 +261,6 @@ For local development, confirm `extension/.env` contains:
 ```dotenv
 WXT_API_BASE_URL=http://localhost:8000/api
 WXT_DASHBOARD_URL=http://localhost:5173
-WXT_DRY_RUN_DEFAULT=true
 ```
 
 Build the unpacked extension:
@@ -275,12 +278,14 @@ Then in Chrome:
 5. In the dashboard, open **Settings → Connect extension** and generate a
    pairing code.
 6. Open the AutoApply extension popup and enter that code.
-7. Sign in to LinkedIn or Naukri in Chrome, then start with a **Practice run**.
+7. Sign in to LinkedIn or Naukri in Chrome, then start a live run. The extension
+   submits supported Easy Apply forms only after required answers are resolved
+   and a final submit control is observed.
 
 Keep the extension's run window open and do not minimize it during a run. Inspect
 the page or open the dashboard to confirm the observed job, the action log, and
-the ledger entry. A practice run never submits an application. Only turn practice
-mode off after you have checked your profile, resume, saved answers, and behavior.
+the ledger entry. Review your profile, resume, and saved answers before starting:
+live runs can submit applications on your behalf.
 
 ### Production configuration
 
@@ -289,7 +294,10 @@ object storage, a strong backend secret, the dashboard/API origins, and any
 optional model providers. Build the dashboard and extension with their production
 API/dashboard URLs; the extension's `WXT_*` values are included in its build and
 are public, so **never put secrets in extension or dashboard environment
-variables**. Keep backend storage keys and model keys exclusively on the server.
+variables**. Publish the production-built extension ZIP and set
+`VITE_EXTENSION_DOWNLOAD_URL` to its hosted URL (or include it as
+`dashboard/public/autoapply-extension.zip`). Keep backend storage keys and model
+keys exclusively on the server.
 
 The backend's [setup guide](backend/README.md) covers database migrations,
 Google OAuth, storage, environment settings, and deployment checks.
